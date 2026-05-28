@@ -14,14 +14,15 @@ No test framework is configured.
 
 ## Architecture
 
-Next.js 15 / React 19 app that renders a hardcoded PDF (`/public/sample.pdf`) with word-level hover-to-translate tooltips. No TypeScript, no CSS framework — all styling is inline.
+Next.js 15 / React 19 app that renders a hardcoded PDF (`/public/sample.pdf`) with word-level click-to-translate floating cards. No TypeScript, no CSS framework — all styling is inline.
 
 **Data flow:**
 
 1. `components/PdfReader.jsx` mounts and calls `extractPdf("/sample.pdf")`
-2. `utils/pdf_processor.js` uses pdfjs-dist (worker fetched from cdnjs CDN — requires internet) to extract text items with transform matrix positions
-3. Extracted words with absolute `{ x, y }` coordinates are rendered as `position: absolute` spans inside per-page containers
-4. On hover, `translateWord()` POSTs to `/api/translate`, which proxies to the free MyMemory API (`api.mymemory.translated.net`) — no API key, falls back to original text on error
+2. `utils/pdf_processor.js` uses pdfjs-dist (worker fetched from cdnjs CDN — requires internet) to extract text items with transform matrix positions; also reads `dc:language` from PDF metadata (falls back to `"en"`)
+3. `extractPdf` returns `{ pages, sourceLang }` — `sourceLang` is the BCP-47 primary tag (e.g. `"en"`)
+4. Extracted words with absolute `{ x, y }` coordinates are rendered as `position: absolute` spans inside per-page containers
+5. On click, `translateWord(word, sourceLang)` POSTs to `/api/translate`, which proxies to the free MyMemory API (`api.mymemory.translated.net`) with `langpair=sourceLang|ru` — no API key, falls back to original text on error
 
 **PDF extraction pipeline** (`utils/pdf_processor.js`):
 - `groupByY(items, tolerance=2.5)` — clusters text items into lines using `transform[5]` (Y)
@@ -30,8 +31,29 @@ Next.js 15 / React 19 app that renders a hardcoded PDF (`/public/sample.pdf`) wi
 - Before processing, duplicate text items at the same integer-rounded position are filtered out (some PDFs embed the same text twice at identical coordinates).
 
 **State** (all local in `PdfReader`):
-- `pages` — `[{ pageNum, width, height, words: [{ text, x, y }] }]`, set once on mount; `width`/`height` come from `page.getViewport({ scale: 1 })` and are used to size the per-page container
-- `tooltip` — `{ word, translation, x, y }` or `null`
+- `pages` — `[{ pageNum, width, height, words: [{ text, x, y }] }]`, set once on mount
+- `sourceLang` — BCP-47 primary tag read from PDF metadata on mount (e.g. `"en"`), passed to every translation call
+- `card` — `{ word, translation, x, y }` or `null`; `translation` is `null` while the API call is in flight (shows "Translating…")
+- `visiblePages` — `Set<number>` of page numbers currently in (or near) the viewport, maintained by `IntersectionObserver`
+
+**Virtualization:**
+- `PageView` is wrapped in `React.memo` — it only re-renders when `isVisible` flips
+- A single `IntersectionObserver` (root = scroll container, rootMargin = 300px) tracks which pages are near the viewport; pages outside it render an empty positioned div (correct height, no spans)
+- `onWordClick` is `useCallback`-memoized so `PageView` props stay referentially stable, meaning `React.memo` actually skips re-renders when the card opens/closes
+- Active word highlight is applied via direct DOM mutation (`activeSpanRef`) rather than React state, so clicking a word doesn't trigger any component re-renders
+
+## Theme
+
+All colors live in `utils/theme.js` as a single `colors` object, **namespaced by feature**:
+
+```js
+colors.app.*    // top-level shell
+colors.page.*   // per-page container
+colors.word.*   // word spans
+colors.card.*   // translation card
+```
+
+When adding a new UI element, add a new namespace rather than mixing tokens into an existing one. Import `colors` wherever styles are needed; never hardcode color values inline.
 
 ## Notes
 

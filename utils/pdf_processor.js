@@ -106,6 +106,13 @@ function buildWords(line, pageHeight) {
 export async function extractPdf(pdfUrl) {
   const pdf = await pdfjsLib.getDocument(pdfUrl).promise;
 
+  const meta = await pdf.getMetadata().catch(() => ({}));
+  const rawLang =
+    meta.metadata?.getAll?.()?.['dc:language'] ??
+    meta.info?.Language ??
+    'en';
+  const sourceLang = rawLang.split('-')[0].toLowerCase() || 'en';
+
   const pages = [];
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -138,5 +145,5 @@ export async function extractPdf(pdfUrl) {
     });
   }
 
-  return pages;
+  return { pages, sourceLang };
 }
