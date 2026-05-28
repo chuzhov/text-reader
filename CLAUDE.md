@@ -31,10 +31,16 @@ Next.js 15 / React 19 app that renders a hardcoded PDF (`/public/sample.pdf`) wi
 - Before processing, duplicate text items at the same integer-rounded position are filtered out (some PDFs embed the same text twice at identical coordinates).
 
 **State** (all local in `PdfReader`):
-- `pages` — `[{ pageNum, width, height, words: [{ text, x, y }] }]`, set once on mount; `width`/`height` come from `page.getViewport({ scale: 1 })` and are used to size the per-page container
+- `pages` — `[{ pageNum, width, height, words: [{ text, x, y }] }]`, set once on mount
 - `sourceLang` — BCP-47 primary tag read from PDF metadata on mount (e.g. `"en"`), passed to every translation call
 - `card` — `{ word, translation, x, y }` or `null`; `translation` is `null` while the API call is in flight (shows "Translating…")
-- `activeWord` — text of the currently clicked span, used to apply `colors.word.activeBackground`
+- `visiblePages` — `Set<number>` of page numbers currently in (or near) the viewport, maintained by `IntersectionObserver`
+
+**Virtualization:**
+- `PageView` is wrapped in `React.memo` — it only re-renders when `isVisible` flips
+- A single `IntersectionObserver` (root = scroll container, rootMargin = 300px) tracks which pages are near the viewport; pages outside it render an empty positioned div (correct height, no spans)
+- `onWordClick` is `useCallback`-memoized so `PageView` props stay referentially stable, meaning `React.memo` actually skips re-renders when the card opens/closes
+- Active word highlight is applied via direct DOM mutation (`activeSpanRef`) rather than React state, so clicking a word doesn't trigger any component re-renders
 
 ## Theme
 
