@@ -7,41 +7,48 @@ import { colors } from "@/utils/theme";
 
 export default function PdfReader() {
   const [pages, setPages] = useState([]);
-  const [tooltip, setTooltip] = useState(null);
-  const [hoveredWord, setHoveredWord] = useState(null);
+  const [sourceLang, setSourceLang] = useState("en");
+  const [card, setCard] = useState(null); // { word, translation, x, y } | null
+  const [activeWord, setActiveWord] = useState(null);
 
   const containerRef = useRef(null);
 
   useEffect(() => {
-    load();
+    extractPdf("/sample.pdf").then(({ pages, sourceLang }) => {
+      setPages(pages);
+      setSourceLang(sourceLang);
+    });
   }, []);
 
-  async function load() {
-    const data = await extractPdf("/sample.pdf");
-    setPages(data);
+  useEffect(() => {
+    function onKey(e) { if (e.key === "Escape") closeCard(); }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  function closeCard() {
+    setCard(null);
+    setActiveWord(null);
   }
 
-  async function onHover(word, e) {
+  async function onWordClick(word, e) {
+    e.stopPropagation();
     const rect = e.target.getBoundingClientRect();
-    setHoveredWord(word);
+    setActiveWord(word);
+    setCard({ word, translation: null, x: rect.left, y: rect.bottom + 8 });
 
-    const translation = await translateWord(word);
-
-    setTooltip({
-      word,
-      translation,
-      x: rect.left,
-      y: rect.top - 40,
-    });
+    const translation = await translateWord(word, sourceLang);
+    setCard(prev => prev?.word === word ? { ...prev, translation } : prev);
   }
 
   return (
     <div
       ref={containerRef}
+      onClick={closeCard}
       style={{
         height: "100vh",
         overflowY: "scroll",
-        background: colors.appBackground,
+        background: colors.app.background,
         padding: 20,
       }}
     >
@@ -49,11 +56,11 @@ export default function PdfReader() {
         <div
           key={page.pageNum}
           style={{
-            background: colors.pageBackground,
+            background: colors.page.background,
             marginBottom: 20,
           }}
         >
-          <div style={{ fontSize: 12, color: colors.pageLabel, padding: "4px 8px" }}>
+          <div style={{ fontSize: 12, color: colors.page.label, padding: "4px 8px" }}>
             Page {page.pageNum}
           </div>
 
@@ -67,15 +74,16 @@ export default function PdfReader() {
             {page.words.map((w, i) => (
               <span
                 key={i}
-                onMouseEnter={(e) => onHover(w.text, e)}
-                onMouseLeave={() => { setTooltip(null); setHoveredWord(null); }}
+                onClick={(e) => onWordClick(w.text, e)}
                 style={{
                   position: "absolute",
                   left: w.x,
                   top: w.y,
                   whiteSpace: "nowrap",
                   cursor: "pointer",
-                  background: hoveredWord === w.text ? colors.wordHoverBackground : colors.wordBackground,
+                  background: activeWord === w.text
+                    ? colors.word.activeBackground
+                    : colors.word.background,
                   padding: "1px 3px",
                   borderRadius: 3,
                 }}
@@ -87,23 +95,46 @@ export default function PdfReader() {
         </div>
       ))}
 
-      {tooltip && (
+      {card && (
         <div
+          onClick={(e) => e.stopPropagation()}
           style={{
             position: "fixed",
-            top: tooltip.y,
-            left: tooltip.x,
-            background: colors.tooltipBackground,
-            color: colors.tooltipText,
-            padding: 8,
-            borderRadius: 6,
-            fontSize: 12,
+            top: card.y,
+            left: card.x,
+            background: colors.card.background,
+            border: `1px solid ${colors.card.border}`,
+            boxShadow: colors.card.shadow,
+            opacity: colors.card.opacity,
+            borderRadius: 8,
+            padding: "12px 16px",
+            minWidth: 200,
+            maxWidth: 320,
             zIndex: 9999,
-            maxWidth: 240,
           }}
         >
-          <div style={{ fontWeight: "bold" }}>{tooltip.word}</div>
-          <div>{tooltip.translation}</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+            <div style={{ fontWeight: 600, fontSize: 16, color: colors.card.word }}>
+              {card.word}
+            </div>
+            <button
+              onClick={closeCard}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: colors.card.close,
+                fontSize: 18,
+                lineHeight: 1,
+                padding: 0,
+              }}
+            >
+              ×
+            </button>
+          </div>
+          <div style={{ marginTop: 6, fontSize: 14, color: card.translation ? colors.card.translation : colors.card.loading }}>
+            {card.translation ?? "Translating…"}
+          </div>
         </div>
       )}
     </div>
