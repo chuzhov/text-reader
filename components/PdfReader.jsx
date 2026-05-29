@@ -8,7 +8,7 @@ import { colors } from "@/utils/theme";
 // Memoized — only re-renders when isVisible flips or page data changes
 const PageView = React.memo(function PageView({ page, isVisible, onWordClick }) {
   return (
-    <div style={{ background: colors.page.background, marginBottom: 20 }}>
+    <div style={{ background: colors.page.background }}>
       <div style={{ fontSize: 12, color: colors.page.label, padding: "4px 8px" }}>
         Page {page.pageNum}
       </div>
@@ -21,6 +21,8 @@ const PageView = React.memo(function PageView({ page, isVisible, onWordClick }) 
               position: "absolute",
               left: w.x,
               top: w.y,
+              fontSize: w.fontSize,
+              lineHeight: 1,
               whiteSpace: "nowrap",
               cursor: "pointer",
               background: colors.word.background,
@@ -84,9 +86,15 @@ export default function PdfReader() {
   }, []);
 
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.style.overflowY = card ? "hidden" : "scroll";
-    }
+    if (!containerRef.current || !card) return;
+    const el = containerRef.current;
+    const prevent = (e) => e.preventDefault();
+    el.addEventListener("wheel", prevent, { passive: false });
+    el.addEventListener("touchmove", prevent, { passive: false });
+    return () => {
+      el.removeEventListener("wheel", prevent);
+      el.removeEventListener("touchmove", prevent);
+    };
   }, [card]);
 
   // Callback ref — registers each page wrapper with the observer
@@ -124,22 +132,35 @@ export default function PdfReader() {
     <div
       ref={containerRef}
       onClick={closeCard}
+      className="pdf-scroll-container"
       style={{
-        height: "100vh",
+        position: "fixed",
+        inset: 0,
         overflowY: "scroll",
+        overflowX: "auto",
         background: colors.app.background,
-        padding: 20,
       }}
     >
-      {pages.map(page => (
-        <div key={page.pageNum} ref={pageRef} data-pagenum={page.pageNum}>
-          <PageView
-            page={page}
-            isVisible={visiblePages.has(page.pageNum)}
-            onWordClick={onWordClick}
-          />
-        </div>
-      ))}
+      <div style={{ paddingTop: 20, paddingBottom: 20 }}>
+        {pages.map(page => (
+          <div
+            key={page.pageNum}
+            style={{
+              paddingLeft: `max(16px, calc(50% - ${page.width / 2}px))`,
+              paddingRight: 16,
+              marginBottom: 20,
+            }}
+          >
+            <div ref={pageRef} data-pagenum={page.pageNum} style={{ width: page.width }}>
+              <PageView
+                page={page}
+                isVisible={visiblePages.has(page.pageNum)}
+                onWordClick={onWordClick}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
 
       {card && (
         <div

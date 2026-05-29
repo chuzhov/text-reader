@@ -55,6 +55,11 @@ colors.card.*   // translation card
 
 When adding a new UI element, add a new namespace rather than mixing tokens into an existing one. Import `colors` wherever styles are needed; never hardcode color values inline.
 
+## Terminology
+
+- **Book page** — the rectangular area sized to the PDF's natural dimensions where the PDF text content is rendered
+- **Book background** — the area surrounding the pages: left/right gutters (when the viewport is wider than the page) and the vertical gaps between pages
+
 ## Notes
 
 - `main.jsx` at the project root is an unused draft with broken imports; the active component is `components/PdfReader.jsx`
