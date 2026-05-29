@@ -61,6 +61,7 @@ function buildWords(line, pageHeight) {
   let buffer = current.str;
   let wordStartX = current.transform[4];
   let wordStartY = pageHeight - current.transform[5];
+  let wordFontSize = Math.abs(current.transform[3]);
 
   for (let i = 1; i < items.length; i++) {
     const item = items[i];
@@ -81,11 +82,13 @@ function buildWords(line, pageHeight) {
         text: buffer,
         x: wordStartX,
         y: wordStartY,
+        fontSize: wordFontSize,
       });
 
       buffer = item.str;
       wordStartX = item.transform[4];
       wordStartY = pageHeight - item.transform[5];
+      wordFontSize = Math.abs(item.transform[3]);
     }
 
     current = item;
@@ -95,6 +98,7 @@ function buildWords(line, pageHeight) {
     text: buffer,
     x: wordStartX,
     y: wordStartY,
+    fontSize: wordFontSize,
   });
 
   return words;
