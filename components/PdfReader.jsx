@@ -129,13 +129,28 @@ export default function PdfReader() {
   }, [sourceLang]);
 
   return (
+    <>
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        bottom: 0,
+        width: 48,
+        background: colors.sidebar.background,
+        zIndex: 10,
+      }}
+    />
     <div
       ref={containerRef}
       onClick={closeCard}
       className="pdf-scroll-container"
       style={{
         position: "fixed",
-        inset: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 48,
         overflowY: "scroll",
         overflowX: "auto",
         background: colors.app.background,
@@ -205,5 +220,6 @@ export default function PdfReader() {
         </div>
       )}
     </div>
+    </>
   );
 }
