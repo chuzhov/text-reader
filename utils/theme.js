@@ -1,4 +1,7 @@
 export const colors = {
+  sidebar: {
+    background: "#fafaf9",
+  },
   app: {
     background: "#f5f5f5",
   },
