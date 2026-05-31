@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           Int           @id @default(autoincrement())
+  email        String        @unique
+  passwordHash String
+  createdAt    DateTime      @default(now())
+  settings     UserSettings?
+  words        Word[]
+  activeWords  ActiveWord[]
+  visits       UserVisit[]
+}
+
+model UserSettings {
+  id         Int    @id @default(autoincrement())
+  userId     Int    @unique
+  sourceLang String @default("en")
+  targetLang String @default("ru")
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Word {
+  id          Int          @id @default(autoincrement())
+  userId      Int
+  word        String
+  translation String
+  sourceLang  String
+  targetLang  String
+  addedAt     DateTime     @default(now())
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeWords ActiveWord[]
+
+  @@unique([userId, word, sourceLang])
+}
+
+model ActiveWord {
+  id             Int       @id @default(autoincrement())
+  userId         Int
+  wordId         Int
+  addedAt        DateTime  @default(now())
+  lastReviewedAt DateTime?
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  word           Word      @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, wordId])
+}
+
+model UserVisit {
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  visitedAt     DateTime  @default(now())
+  lastVisitedAt DateTime?
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
