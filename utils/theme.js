@@ -18,6 +18,14 @@ export const colors = {
     default: "#9CA3AF",
     hover: "#F97316",
   },
+  cefr: {
+    A1: "#4CAF50",
+    A2: "#8BC34A",
+    B1: "#FFC107",
+    B2: "#FF9800",
+    C1: "#FF5722",
+    C2: "#F44336",
+  },
   card: {
     background: "#ffffff",
     border: "#e0e0e0",

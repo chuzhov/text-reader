@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { extractPdf } from "@/utils/pdf_processor";
 import { translateWord } from "@/utils/translation_api";
+import { getCefrLevel } from "@/utils/cefr";
 import { colors } from "@/utils/theme";
 
 function getSelectedText() {
@@ -171,7 +172,7 @@ export default function PdfReader() {
       setLoadingPos(pos);
       const translation = await translateWord(selectedText, sourceLang);
       setLoadingPos(null);
-      setCard({ word: selectedText, translation, ...pos });
+      setCard({ word: selectedText, translation, cefrLevel: null, ...pos });
       return;
     }
 
@@ -190,7 +191,7 @@ export default function PdfReader() {
     setLoadingPos(pos);
     const translation = await translateWord(word, sourceLang);
     setLoadingPos(null);
-    setCard({ word, translation, ...pos });
+    setCard({ word, translation, cefrLevel: getCefrLevel(word, sourceLang), ...pos });
   }, [sourceLang]);
 
   return (
@@ -330,7 +331,7 @@ export default function PdfReader() {
           setLoadingPos(pos);
           translateWord(selectedText, sourceLang).then(translation => {
             setLoadingPos(null);
-            setCard({ word: selectedText, translation, ...pos });
+            setCard({ word: selectedText, translation, cefrLevel: null, ...pos });
           });
           return;
         }
@@ -397,8 +398,23 @@ export default function PdfReader() {
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-            <div style={{ fontWeight: 600, fontSize: 16, color: colors.card.word }}>
-              {card.word}
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ fontWeight: 600, fontSize: 16, color: colors.card.word }}>
+                {card.word}
+              </div>
+              {card.cefrLevel && (
+                <span style={{
+                  background: colors.cefr[card.cefrLevel],
+                  color: "#fff",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                  letterSpacing: 0.5,
+                }}>
+                  {card.cefrLevel}
+                </span>
+              )}
             </div>
             <button
               onClick={closeCard}
