@@ -1,3 +1,16 @@
+@keyframes pdf-spin {
+  to { transform: rotate(360deg); }
+}
+
+.pdf-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid #e0e0e0;
+  border-top-color: #888;
+  border-radius: 50%;
+  animation: pdf-spin 0.7s linear infinite;
+}
+
 .pdf-scroll-container::-webkit-scrollbar {
   width: 10px;
   height: 10px;
