@@ -8,9 +8,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev      # Dev server at http://localhost:3000
 npm run build    # Production build
 npm start        # Run production build
+npx prisma migrate dev   # Apply migrations and regenerate client
+npx prisma db seed       # Seed test user (testuser@email.com / 12345678)
+npx prisma studio        # GUI for the SQLite database
 ```
 
 No test framework is configured.
+
+**Dev server caveat:** Prisma 7's TypeScript-only ESM client has initialization issues in Next.js dev HMR context — after the first sign-in triggers the `authorize` callback, all NextAuth API routes may 500. Use `npm run build && npm start` for reliable auth testing.
 
 ## Architecture
 
@@ -70,7 +75,37 @@ When adding a new UI element, add a new namespace rather than mixing tokens into
 - **Book page** — the rectangular area sized to the PDF's natural dimensions where the PDF text content is rendered
 - **Book background** — the area surrounding the pages: left/right gutters (when the viewport is wider than the page) and the vertical gaps between pages
 
+## Auth & database
+
+**Authentication:** NextAuth v4 with a Credentials provider (`lib/auth.js`). Custom sign-in page at `/auth` (`app/auth/page.jsx`). Session strategy is JWT. The `jwt` and `session` callbacks extend the token with `id` (user row ID) and `visitId` (current `UserVisit` row ID — created on every sign-in).
+
+**Middleware** (`middleware.js`): re-exports `next-auth/middleware`; protects every route except `/auth`, `/api/auth/*`, and Next.js static assets.
+
+**Database:** SQLite (`prisma/dev.db`) via Prisma 7 with the LibSQL adapter (`@prisma/adapter-libsql`). Client generated to `app/generated/prisma/` as TypeScript-only ESM. Webpack `extensionAlias` in `next.config.mjs` maps `.js` → `.ts` so generated deep imports resolve. Singleton in `lib/prisma.js` — stored on `globalThis` in dev mode to survive HMR.
+
+**Schema models:**
+- `User` — email + bcrypt-hashed password; owns `UserSettings`, `Word`, `ActiveWord`, `UserVisit`
+- `UserSettings` — per-user `sourceLang`/`targetLang` defaults (created with user on registration)
+- `Word` — saved vocabulary entries; unique on `(userId, word, sourceLang)`
+- `ActiveWord` — words currently being studied; unique on `(userId, wordId)`
+- `UserVisit` — one row per sign-in; `lastVisitedAt` stamped on word click and logout via `POST /api/visit/ping`
+
+**API routes** (all require a valid session except `/api/auth/*`):
+- `POST /api/auth/register` — create account; hashes password with bcrypt, creates default `UserSettings`
+- `POST /api/visit/ping` — updates `lastVisitedAt` for the current visit using `session.user.visitId`
+- `GET /api/vocabulary` — list user's saved words ordered by `addedAt` desc
+- `POST /api/vocabulary` — upsert a word into the user's vocabulary
+- `POST /api/vocabulary/active` — upsert word + mark it active (for study mode)
+- `DELETE /api/vocabulary/active` — remove a word from active study list
+
+**Session shape** (extended by JWT callbacks):
+```js
+session.user.id       // String(user.id)
+session.user.visitId  // String(userVisit.id) — created at sign-in
+```
+
 ## Notes
 
 - `main.jsx` at the project root is an unused draft with broken imports; the active component is `components/PdfReader.jsx`
 - The PDF path is hardcoded in `PdfReader`; there is no file upload UI
+- `components/PdfReaderWrapper.jsx` wraps `PdfReader` with `next/dynamic` (`ssr: false`) — needed because pdfjs-dist uses browser APIs
