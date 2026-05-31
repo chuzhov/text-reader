@@ -78,6 +78,11 @@ export default function PdfReader() {
   const [bookHovered, setBookHovered] = useState(false);
   const [starHovered, setStarHovered] = useState(false);
   const [closeHovered, setCloseHovered] = useState(false);
+  const [bookshelfHovered, setBookshelfHovered] = useState(false);
+  const [targetLang] = useState("ru");
+  const [sourceLangHovered, setSourceLangHovered] = useState(false);
+  const [targetLangHovered, setTargetLangHovered] = useState(false);
+  const [settingsHovered, setSettingsHovered] = useState(false);
 
   const containerRef = useRef(null);
   const observerRef = useRef(null);
@@ -199,8 +204,116 @@ export default function PdfReader() {
         width: 48,
         background: colors.sidebar.background,
         zIndex: 10,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "space-between",
       }}
-    />
+    >
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, marginTop: 8 }}>
+        <button
+          onMouseEnter={() => setBookshelfHovered(true)}
+          onMouseLeave={() => setBookshelfHovered(false)}
+          style={{
+            background: "none",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+          }}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 32 32" fill={bookshelfHovered ? colors.icon.hover : colors.icon.default}>
+            <rect x="4" y="2" width="24" height="28" stroke={colors.icon.default} fill="none" strokeWidth="2"/>
+            <line x1="4" y1="10" x2="28" y2="10" stroke={colors.icon.default} strokeWidth="2"/>
+            <line x1="4" y1="18" x2="28" y2="18" stroke={colors.icon.default} strokeWidth="2"/>
+            <line x1="4" y1="26" x2="28" y2="26" stroke={colors.icon.default} strokeWidth="2"/>
+            <rect x="6" y="3" width="3" height="6"/>
+            <rect x="10" y="3" width="3" height="6"/>
+            <rect x="14" y="3" width="3" height="6"/>
+            <rect x="6" y="11" width="3" height="6"/>
+            <rect x="10" y="11" width="3" height="6"/>
+            <polygon points="16,11 19,11 21,17 18,17"/>
+            <rect x="6" y="19" width="3" height="6"/>
+            <rect x="10" y="19" width="3" height="6"/>
+            <rect x="14" y="19" width="3" height="6"/>
+          </svg>
+        </button>
+        <div style={{
+          background: colors.sidebar.langGroup,
+          borderRadius: 6,
+          padding: 4,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 4,
+        }}>
+          <button
+            onMouseEnter={() => setSourceLangHovered(true)}
+            onMouseLeave={() => setSourceLangHovered(false)}
+            style={{
+              width: 30,
+              height: 30,
+              background: colors.sidebar.background,
+              border: `1px solid ${colors.icon.default}`,
+              borderRadius: 4,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              color: sourceLangHovered ? colors.icon.hover : colors.icon.default,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: 0.5,
+            }}
+          >
+            {sourceLang[0].toUpperCase() + sourceLang.slice(1)}
+          </button>
+          <button
+            onMouseEnter={() => setTargetLangHovered(true)}
+            onMouseLeave={() => setTargetLangHovered(false)}
+            style={{
+              width: 30,
+              height: 30,
+              background: colors.sidebar.background,
+              border: `1px solid ${colors.icon.default}`,
+              borderRadius: 4,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              color: targetLangHovered ? colors.icon.hover : colors.icon.default,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: 0.5,
+            }}
+          >
+            {targetLang[0].toUpperCase() + targetLang.slice(1)}
+          </button>
+        </div>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, paddingBottom: 8 }}>
+        <button
+          onMouseEnter={() => setSettingsHovered(true)}
+          onMouseLeave={() => setSettingsHovered(false)}
+          style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none" stroke={settingsHovered ? colors.icon.hover : colors.icon.default} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeMiterlimit="10">
+            <circle cx="16" cy="16" r="4"/>
+            <path d="M27.758,10.366l-1-1.732c-0.552-0.957-1.775-1.284-2.732-0.732L23.5,8.206C21.5,9.36,19,7.917,19,5.608V5c0-1.105-0.895-2-2-2h-2c-1.105,0-2,0.895-2,2v0.608c0,2.309-2.5,3.753-4.5,2.598L7.974,7.902C7.017,7.35,5.794,7.677,5.242,8.634l-1,1.732c-0.552,0.957-0.225,2.18,0.732,2.732L5.5,13.402c2,1.155,2,4.041,0,5.196l-0.526,0.304c-0.957,0.552-1.284,1.775-0.732,2.732l1,1.732c0.552,0.957,1.775,1.284,2.732,0.732L8.5,23.794c2-1.155,4.5,0.289,4.5,2.598V27c0,1.105,0.895,2,2,2h2c1.105,0,2-0.895,2-2v-0.608c0-2.309,2.5-3.753,4.5-2.598l0.526,0.304c0.957,0.552,2.18,0.225,2.732-0.732l1-1.732c0.552-0.957,0.225-2.18-0.732-2.732L26.5,18.598c-2-1.155-2-4.041,0-5.196l0.526-0.304C27.983,12.546,28.311,11.323,27.758,10.366z"/>
+          </svg>
+        </button>
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 4,
+            background: "#9CA3AF",
+            cursor: "pointer",
+          }}
+        />
+      </div>
+    </div>
     <div
       ref={containerRef}
       onClick={() => {
@@ -295,7 +408,7 @@ export default function PdfReader() {
                 background: "none",
                 border: "none",
                 cursor: "pointer",
-                color: closeHovered ? "#F97316" : colors.card.close,
+                color: closeHovered ? colors.icon.hover : colors.card.close,
                 fontSize: 18,
                 lineHeight: 1,
                 padding: 0,
@@ -323,7 +436,7 @@ export default function PdfReader() {
                 alignItems: "center",
                 justifyContent: "center",
                 padding: 0,
-                color: starHovered ? "#F97316" : "#9CA3AF",
+                color: starHovered ? colors.icon.hover : colors.icon.default,
               }}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -344,7 +457,7 @@ export default function PdfReader() {
                 alignItems: "center",
                 justifyContent: "center",
                 padding: 0,
-                color: bookHovered ? "#F97316" : "#9CA3AF",
+                color: bookHovered ? colors.icon.hover : colors.icon.default,
               }}
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

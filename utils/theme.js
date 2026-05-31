@@ -1,6 +1,7 @@
 export const colors = {
   sidebar: {
     background: "#fafaf9",
+    langGroup: "#e5e7eb",
   },
   app: {
     background: "#f5f5f5",
@@ -12,6 +13,10 @@ export const colors = {
   word: {
     background: "transparent",
     activeBackground: "rgba(0, 0, 0, 0.07)",
+  },
+  icon: {
+    default: "#9CA3AF",
+    hover: "#F97316",
   },
   card: {
     background: "#ffffff",
