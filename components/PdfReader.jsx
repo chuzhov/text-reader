@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import { useSession, signOut } from "next-auth/react";
 import { extractPdf } from "@/utils/pdf_processor";
 import { translateWord } from "@/utils/translation_api";
 import { getCefrLevel } from "@/utils/cefr";
@@ -71,6 +72,8 @@ const PageView = React.memo(function PageView({ page, isVisible, onWordClick }) 
 });
 
 export default function PdfReader() {
+  const { data: session } = useSession();
+  const userInitial = session?.user?.email?.[0]?.toUpperCase() ?? '?';
   const [pages, setPages] = useState([]);
   const [sourceLang, setSourceLang] = useState("en");
   const [card, setCard] = useState(null);
@@ -84,8 +87,22 @@ export default function PdfReader() {
   const [sourceLangHovered, setSourceLangHovered] = useState(false);
   const [targetLangHovered, setTargetLangHovered] = useState(false);
   const [settingsHovered, setSettingsHovered] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [logoutHovered, setLogoutHovered] = useState(false);
 
   const containerRef = useRef(null);
+  const userMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handleOutside = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [userMenuOpen]);
   const observerRef = useRef(null);
   const activeSpanRef = useRef(null);
 
@@ -158,6 +175,7 @@ export default function PdfReader() {
   // Stable callback — PageView won't re-render when card opens/closes
   const onWordClick = useCallback(async (e) => {
     e.stopPropagation();
+    fetch('/api/visit/ping', { method: 'POST' });
 
     const selectedText = getSelectedText();
     if (selectedText) {
@@ -304,15 +322,78 @@ export default function PdfReader() {
             <path d="M27.758,10.366l-1-1.732c-0.552-0.957-1.775-1.284-2.732-0.732L23.5,8.206C21.5,9.36,19,7.917,19,5.608V5c0-1.105-0.895-2-2-2h-2c-1.105,0-2,0.895-2,2v0.608c0,2.309-2.5,3.753-4.5,2.598L7.974,7.902C7.017,7.35,5.794,7.677,5.242,8.634l-1,1.732c-0.552,0.957-0.225,2.18,0.732,2.732L5.5,13.402c2,1.155,2,4.041,0,5.196l-0.526,0.304c-0.957,0.552-1.284,1.775-0.732,2.732l1,1.732c0.552,0.957,1.775,1.284,2.732,0.732L8.5,23.794c2-1.155,4.5,0.289,4.5,2.598V27c0,1.105,0.895,2,2,2h2c1.105,0,2-0.895,2-2v-0.608c0-2.309,2.5-3.753,4.5-2.598l0.526,0.304c0.957,0.552,2.18,0.225,2.732-0.732l1-1.732c0.552-0.957,0.225-2.18-0.732-2.732L26.5,18.598c-2-1.155-2-4.041,0-5.196l0.526-0.304C27.983,12.546,28.311,11.323,27.758,10.366z"/>
           </svg>
         </button>
-        <div
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 4,
-            background: "#9CA3AF",
-            cursor: "pointer",
-          }}
-        />
+        <div ref={userMenuRef} style={{ position: "relative" }}>
+          <button
+            onClick={() => setUserMenuOpen(v => !v)}
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 4,
+              background: colors.app.background,
+              border: "none",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 16,
+              fontWeight: 700,
+              color: colors.icon.hover,
+              padding: 0,
+            }}
+          >
+            {userInitial}
+          </button>
+          {userMenuOpen && (
+            <div style={{
+              position: "fixed",
+              left: 56,
+              bottom: 8,
+              background: colors.card.background,
+              border: `1px solid ${colors.card.border}`,
+              boxShadow: colors.card.shadow,
+              borderRadius: 8,
+              minWidth: 200,
+              zIndex: 9999,
+              overflow: "hidden",
+            }}>
+              <div style={{
+                padding: "10px 14px",
+                fontSize: 12,
+                color: "#6b7280",
+                borderBottom: `1px solid ${colors.card.border}`,
+                wordBreak: "break-all",
+              }}>
+                {session?.user?.email}
+              </div>
+              <button
+                onMouseEnter={() => setLogoutHovered(true)}
+                onMouseLeave={() => setLogoutHovered(false)}
+                onClick={async () => {
+                  await fetch('/api/visit/ping', { method: 'POST' });
+                  signOut({ callbackUrl: '/auth' });
+                }}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "10px 14px",
+                  background: logoutHovered ? colors.app.background : "none",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  color: logoutHovered ? colors.icon.hover : "#374151",
+                  textAlign: "left",
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+                  <path fill="currentColor" d="M3.333 14.667A.667.667 0 0 1 2.667 14V2c0-.368.298-.667.666-.667h9.334c.368 0 .666.299.666.667v2H12V2.667H4v10.666h8V12h1.333v2a.667.667 0 0 1-.666.667H3.333Zm8.667-4v-2H7.333V7.333H12v-2L15.333 8 12 10.667Z"/>
+                </svg>
+                Log out
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
     <div

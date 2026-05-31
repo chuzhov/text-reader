@@ -32,5 +32,6 @@ Thumbs.db
 .playwright-mcp/
 
 public/*.pdf
+dev.db
 
 /app/generated/prisma

@@ -53,8 +53,9 @@ model ActiveWord {
 }
 
 model UserVisit {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  visitedAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            Int       @id @default(autoincrement())
+  userId        Int
+  visitedAt     DateTime  @default(now())
+  lastVisitedAt DateTime?
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
