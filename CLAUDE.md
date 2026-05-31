@@ -33,7 +33,8 @@ Next.js 15 / React 19 app that renders a hardcoded PDF (`/public/sample.pdf`) wi
 **State** (all local in `PdfReader`):
 - `pages` — `[{ pageNum, width, height, words: [{ text, x, y }] }]`, set once on mount
 - `sourceLang` — BCP-47 primary tag read from PDF metadata on mount (e.g. `"en"`), passed to every translation call
-- `card` — `{ word, translation, x, y }` or `null`; `translation` is `null` while the API call is in flight (shows "Translating…")
+- `targetLang` — translation target language code (currently hardcoded `"ru"`); drives the target-lang button label in the sidebar
+- `card` — `{ word, translation, cefrLevel, x, y }` or `null`; `translation` is `null` while the API call is in flight (shows "Translating…"); `cefrLevel` is `null` for multi-word selections
 - `visiblePages` — `Set<number>` of page numbers currently in (or near) the viewport, maintained by `IntersectionObserver`
 
 **Virtualization:**
@@ -47,13 +48,22 @@ Next.js 15 / React 19 app that renders a hardcoded PDF (`/public/sample.pdf`) wi
 All colors live in `utils/theme.js` as a single `colors` object, **namespaced by feature**:
 
 ```js
-colors.app.*    // top-level shell
-colors.page.*   // per-page container
-colors.word.*   // word spans
-colors.card.*   // translation card
+colors.app.*      // top-level shell
+colors.sidebar.*  // fixed left sidebar (background, langGroup pill)
+colors.page.*     // per-page container
+colors.word.*     // word spans
+colors.icon.*     // shared icon tints — default and hover
+colors.cefr.*     // CEFR level badge colors keyed by level (A1–C2)
+colors.card.*     // translation card
 ```
 
 When adding a new UI element, add a new namespace rather than mixing tokens into an existing one. Import `colors` wherever styles are needed; never hardcode color values inline.
+
+## CEFR level badges
+
+`utils/cefr.json` — language-namespaced lookup table `{ "en": { word: level } }` (6,863 English words, MIT-licensed CEFR-J dataset). Add other languages by inserting a new top-level key; no fetching is needed at runtime.
+
+`utils/cefr.js` — exports `getCefrLevel(word, lang)`. Returns an A1–C2 string or `null` if the word or language is not in the data. Called at the `setCard` site with `sourceLang`; `cefrLevel: null` is passed for multi-word selections so the badge is simply absent.
 
 ## Terminology
 
