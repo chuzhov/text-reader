@@ -14,6 +14,8 @@ npx prisma db seed       # Seed test user (testuser@email.com / 12345678)
 npx prisma studio        # GUI for the SQLite database
 ```
 
+**Prisma non-interactive caveat:** `prisma migrate dev` requires a TTY and will fail in Claude Code's terminal. Use `npx prisma db push --accept-data-loss` to sync the schema directly, then `npx prisma generate`. The `--accept-data-loss` flag is needed whenever a column is being dropped.
+
 No test framework is configured.
 
 **Dev server caveat:** Prisma 7's TypeScript-only ESM client has initialization issues in Next.js dev HMR context — after the first sign-in triggers the `authorize` callback, all NextAuth API routes may 500. Use `npm run build && npm start` for reliable auth testing.
@@ -43,12 +45,22 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - `sourceLang` — BCP-47 primary tag read from PDF metadata on load (e.g. `"en"`), passed to every translation call
 - `targetLang` — translation target language code (currently hardcoded `"ru"`); drives the target-lang button label in the sidebar
 - `card` — `{ word, translation, cefrLevel, x, y }` or `null`; `translation` is `null` while the API call is in flight (shows "Translating…"); `cefrLevel` is `null` for multi-word selections
+- `wordStatus` — `{ inVocab, isActive }` or `null`; fetched in parallel with translation via `GET /api/vocabulary/check` for single-word clicks only; `null` for multi-word selections and while loading
+- `starSaving` / `bookSaving` — `true` while the respective vocabulary save API call is in flight; shows a 16px spinner inside the button
 - `visiblePages` — `Set<number>` of page numbers currently in (or near) the viewport, maintained by `IntersectionObserver`
 - `pdfPath` — current `/api/files/{id}/content` URL being rendered, or `null` if no file is open
 - `userFiles` — array of the user's `UserFile` records from the API, sorted by most recently opened
 - `filesLoaded` — `false` until the initial `/api/files` fetch completes; gates the empty state render
 - `showFilePanel` — whether the file picker panel is open
+- `panelWidth` — dynamic width of the file picker panel; calculated on open by measuring each filename with a hidden probe `<span>` at `font-size:12px`; bounded by `window.innerWidth - 56 - 10 - 8` (sidebar + scrollbar + gap)
 - `fileUrl` / `fileUrlError` / `uploadLoading` — URL input value, last upload error, and in-flight flag for the file panel
+
+**Translation card vocabulary buttons** (single-word only; both disabled for multi-word selections):
+- Book button — adds to general vocab (`POST /api/vocabulary`); highlighted (orange) when `wordStatus.inVocab`; no-op if already saved
+- Star button — adds to both general and active vocab (`POST /api/vocabulary/active`); highlighted when `wordStatus.isActive`; pressing star after book also lights up the book
+- Both buttons show a 16px spinner (`pdf-spinner` class) while the save is in flight, then switch to the highlighted icon on success
+- Speaker button (word → speaker → CEFR badge order) — uses `SpeechSynthesis` API with `utter.lang = sourceLang`; single-word only; calls `speechSynthesis.cancel()` before speaking to interrupt any ongoing speech
+- Trailing punctuation (`.,;:!?"'…`) is stripped from the extracted word before translation, CEFR lookup, vocab check, and pronunciation
 
 **Virtualization:**
 - `PageView` is wrapped in `React.memo` — it only re-renders when `isVisible` flips
@@ -97,8 +109,8 @@ When adding a new UI element, add a new namespace rather than mixing tokens into
 **Schema models:**
 - `User` — email + bcrypt-hashed password; owns `UserSettings`, `Word`, `ActiveWord`, `UserVisit`, `UserFile`
 - `UserSettings` — per-user `sourceLang`/`targetLang` defaults (created with user on registration)
-- `Word` — saved vocabulary entries; unique on `(userId, word, sourceLang)`
-- `ActiveWord` — words currently being studied; unique on `(userId, wordId)`
+- `Word` — saved vocabulary entries; unique on `(userId, word, sourceLang)`; `isHidden Boolean @default(false)` for soft-hiding words
+- `ActiveWord` — words currently being studied; unique on `(userId, wordId)`; `isHidden Boolean @default(false)`; only `isHidden: false` records are counted when checking active status in the translation card
 - `UserVisit` — one row per sign-in; `lastVisitedAt` stamped on word click and logout via `POST /api/visit/ping`
 - `UserFile` — uploaded PDF metadata; `path` stores only the filename (not a URL); `scrollOffset` (int px) is restored when the file is reopened; `lastOpenedAt` drives the "most recent" sort order
 
@@ -106,8 +118,9 @@ When adding a new UI element, add a new namespace rather than mixing tokens into
 - `POST /api/auth/register` — create account; hashes password with bcrypt, creates default `UserSettings`
 - `POST /api/visit/ping` — updates `lastVisitedAt` for the current visit using `session.user.visitId`
 - `GET /api/vocabulary` — list user's saved words ordered by `addedAt` desc
-- `POST /api/vocabulary` — upsert a word into the user's vocabulary
-- `POST /api/vocabulary/active` — upsert word + mark it active (for study mode)
+- `POST /api/vocabulary` — upsert a word into the user's vocabulary (general vocab only)
+- `GET /api/vocabulary/check?word=X&sourceLang=Y` — returns `{ inVocab, isActive }` for the current user; filters `isHidden: false` on both tables; called in parallel with translation when a single word is clicked
+- `POST /api/vocabulary/active` — upsert word + mark it active (adds to both general and active vocab)
 - `DELETE /api/vocabulary/active` — remove a word from active study list
 - `GET /api/files` — list user's `UserFile` records sorted by `lastOpenedAt desc, uploadedAt desc`
 - `POST /api/files` — upload a PDF; accepts multipart `file` field or JSON `{ url }`; validates PDF magic bytes; saves to `uploads/` at project root; returns the created `UserFile` record
