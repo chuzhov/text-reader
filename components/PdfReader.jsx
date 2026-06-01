@@ -379,7 +379,11 @@ export default function PdfReader() {
       setLoadingPos({ x: selRect.left, y: selRect.bottom + 8 });
       const translation = await translateWord(selectedText, sourceLang);
       setLoadingPos(null);
+      const status = translation && !translation.includes(' ')
+        ? await fetch(`/api/vocabulary/check?word=${encodeURIComponent(selectedText)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null)
+        : null;
       setCard({ word: selectedText, translation, cefrLevel: null, ...cardPos });
+      setWordStatus(status);
       return;
     }
 
@@ -811,9 +815,13 @@ export default function PdfReader() {
           setCard(null);
           setWordStatus(null);
           setLoadingPos({ x: selRect.left, y: selRect.bottom + 8 });
-          translateWord(selectedText, sourceLang).then(translation => {
+          translateWord(selectedText, sourceLang).then(async translation => {
             setLoadingPos(null);
+            const status = translation && !translation.includes(' ')
+              ? await fetch(`/api/vocabulary/check?word=${encodeURIComponent(selectedText)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null)
+              : null;
             setCard({ word: selectedText, translation, cefrLevel: null, ...cardPos });
+            setWordStatus(status);
           });
           return;
         }
@@ -997,7 +1005,7 @@ export default function PdfReader() {
               onMouseEnter={() => setStarHovered(true)}
               onMouseLeave={() => setStarHovered(false)}
               onClick={async () => {
-                if (!card || wordStatus?.isActive || card.word.includes(' ') || starSaving) return;
+                if (!card || wordStatus?.isActive || (card.word.includes(' ') && card.translation?.includes(' ')) || starSaving) return;
                 setStarSaving(true);
                 const res = await fetch('/api/vocabulary/active', {
                   method: 'POST',
@@ -1013,7 +1021,7 @@ export default function PdfReader() {
                 background: "none",
                 border: `1px solid ${colors.card.border}`,
                 borderRadius: 4,
-                cursor: card && !wordStatus?.isActive && !card.word.includes(' ') && !starSaving ? "pointer" : "default",
+                cursor: card && !wordStatus?.isActive && !(card.word.includes(' ') && card.translation?.includes(' ')) && !starSaving ? "pointer" : "default",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1032,7 +1040,7 @@ export default function PdfReader() {
               onMouseEnter={() => setBookHovered(true)}
               onMouseLeave={() => setBookHovered(false)}
               onClick={async () => {
-                if (!card || wordStatus?.inVocab || card.word.includes(' ') || bookSaving) return;
+                if (!card || wordStatus?.inVocab || (card.word.includes(' ') && card.translation?.includes(' ')) || bookSaving) return;
                 setBookSaving(true);
                 const res = await fetch('/api/vocabulary', {
                   method: 'POST',
@@ -1048,7 +1056,7 @@ export default function PdfReader() {
                 background: "none",
                 border: `1px solid ${colors.card.border}`,
                 borderRadius: 4,
-                cursor: card && !wordStatus?.inVocab && !card.word.includes(' ') && !bookSaving ? "pointer" : "default",
+                cursor: card && !wordStatus?.inVocab && !(card.word.includes(' ') && card.translation?.includes(' ')) && !bookSaving ? "pointer" : "default",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",

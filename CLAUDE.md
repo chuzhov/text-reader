@@ -44,7 +44,8 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - `pages` — `[{ pageNum, width, height, words: [{ text, x, y }] }]`, set once per file load
 - `sourceLang` — BCP-47 primary tag read from PDF metadata on load (e.g. `"en"`), passed to every translation call
 - `targetLang` — translation target language code (currently hardcoded `"ru"`); drives the target-lang button label in the sidebar
-- `card` — `{ word, translation, cefrLevel, x, y }` or `null`; `translation` is `null` while the API call is in flight (shows "Translating…"); `cefrLevel` is `null` for multi-word selections
+- `card` — `{ word, translation, cefrLevel, x, top, bottom }` or `null`; exactly one of `top`/`bottom` is a number, the other is `null` (CSS `bottom` used when card flips above the word to avoid height-estimation gap); `translation` is `null` while the API call is in flight (shows "Translating…"); `cefrLevel` is `null` for multi-word selections
+- `loadingPos` — `{ x, y }` or `null`; position of the loading spinner while translation is in flight; decoupled from `card`'s `top`/`bottom` (always uses `anchorRect.bottom + 8` as `y`)
 - `wordStatus` — `{ inVocab, isActive }` or `null`; fetched in parallel with translation via `GET /api/vocabulary/check` for single-word clicks only; `null` for multi-word selections and while loading
 - `starSaving` / `bookSaving` — `true` while the respective vocabulary save API call is in flight; shows a 16px spinner inside the button
 - `visiblePages` — `Set<number>` of page numbers currently in (or near) the viewport, maintained by `IntersectionObserver`
@@ -53,7 +54,13 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - `filesLoaded` — `false` until the initial `/api/files` fetch completes; gates the empty state render
 - `showFilePanel` — whether the file picker panel is open
 - `panelWidth` — dynamic width of the file picker panel; calculated on open by measuring each filename with a hidden probe `<span>` at `font-size:12px`; bounded by `window.innerWidth - 56 - 10 - 8` (sidebar + scrollbar + gap)
+- `deviceType` — not state, computed inline on render via `window.matchMedia('(pointer: coarse)')` + `window.innerWidth`; values: `"desktop"` / `"tablet"` / `"mobile"`; used in the file panel to show a matching device icon (monitor / tablet / phone) next to the currently open file; inactive files show a document/page icon
 - `fileUrl` / `fileUrlError` / `uploadLoading` — URL input value, last upload error, and in-flight flag for the file panel
+
+**Translation card placement** (`computeCardPos(anchorRect, xAnchor)` helper):
+- Horizontal: `x = clamp(e.clientX, 64, window.innerWidth - 280 - 8)`; uses the actual click X (`e.clientX`) for single-word clicks so the card is close to the clicked word, not the span's left edge
+- Vertical: if space below `anchorRect.bottom` ≥ 220px → `{ top: anchorRect.bottom + 8, bottom: null }`; otherwise flips above → `{ top: null, bottom: window.innerHeight - anchorRect.top + 8 }`. Using CSS `bottom` (not estimated `top`) pins the card's bottom edge 8px above the word regardless of actual card height
+- Card JSX uses `top: card.top ?? 'auto', bottom: card.bottom ?? 'auto'`; `maxHeight: window.innerHeight - 32` + `overflowY: auto` for small viewports
 
 **Translation card vocabulary buttons** (single-word only; both disabled for multi-word selections):
 - Book button — adds to general vocab (`POST /api/vocabulary`); highlighted (orange) when `wordStatus.inVocab`; no-op if already saved
