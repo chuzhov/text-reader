@@ -112,6 +112,7 @@ export default function PdfReader() {
   const [settingsHovered, setSettingsHovered] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [logoutHovered, setLogoutHovered] = useState(false);
+  const [speakerHovered, setSpeakerHovered] = useState(false);
 
   const containerRef = useRef(null);
   const userMenuRef = useRef(null);
@@ -343,6 +344,7 @@ export default function PdfReader() {
     setCloseHovered(false);
     setBookHovered(false);
     setStarHovered(false);
+    setSpeakerHovered(false);
   }
 
   // Stable callback — PageView won't re-render when card opens/closes
@@ -914,6 +916,32 @@ export default function PdfReader() {
               <div style={{ fontWeight: 600, fontSize: 16, color: colors.card.word }}>
                 {card.word}
               </div>
+              {!card.word.includes(' ') && (
+                <button
+                  onMouseEnter={() => setSpeakerHovered(true)}
+                  onMouseLeave={() => setSpeakerHovered(false)}
+                  onClick={() => {
+                    if (typeof speechSynthesis === 'undefined') return;
+                    speechSynthesis.cancel();
+                    const utter = new SpeechSynthesisUtterance(card.word);
+                    utter.lang = sourceLang;
+                    speechSynthesis.speak(utter);
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    color: speakerHovered ? colors.icon.hover : '#111827',
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M19 6C20.5 7.5 21 10 21 12C21 14 20.5 16.5 19 18M16 8.99998C16.5 9.49998 17 10.5 17 12C17 13.5 16.5 14.5 16 15M3 10.5V13.5C3 14.6046 3.5 15.5 5.5 16C7.5 16.5 9 21 12 21C14 21 14 3 12 3C9 3 7.5 7.5 5.5 8C3.5 8.5 3 9.39543 3 10.5Z"/>
+                  </svg>
+                </button>
+              )}
               {card.cefrLevel && (
                 <span style={{
                   background: colors.cefr[card.cefrLevel],
