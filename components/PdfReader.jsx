@@ -38,6 +38,19 @@ function getWordAtPoint(x, y, fallback) {
   return fallback;
 }
 
+// Returns { x, top, bottom } — exactly one of top/bottom is a number, the other is null.
+// Using CSS bottom when flipping above avoids needing to know the card's actual height.
+function computeCardPos(anchorRect, xAnchor) {
+  const CARD_W = 280;
+  const CARD_H = 220;
+  const x = Math.max(64, Math.min(window.innerWidth - CARD_W - 8, xAnchor ?? anchorRect.left));
+  const spaceBelow = window.innerHeight - anchorRect.bottom - 8;
+  if (spaceBelow >= CARD_H) {
+    return { x, top: anchorRect.bottom + 8, bottom: null };
+  }
+  return { x, top: null, bottom: window.innerHeight - anchorRect.top + 8 };
+}
+
 // Memoized — only re-renders when isVisible flips or page data changes
 const PageView = React.memo(function PageView({ page, isVisible, onWordClick }) {
   return (
@@ -360,13 +373,13 @@ export default function PdfReader() {
         activeSpanRef.current.style.background = colors.word.background;
         activeSpanRef.current = null;
       }
-      const pos = { x: selRect.left, y: selRect.bottom + 8 };
+      const cardPos = computeCardPos(selRect);
       setCard(null);
       setWordStatus(null);
-      setLoadingPos(pos);
+      setLoadingPos({ x: selRect.left, y: selRect.bottom + 8 });
       const translation = await translateWord(selectedText, sourceLang);
       setLoadingPos(null);
-      setCard({ word: selectedText, translation, cefrLevel: null, ...pos });
+      setCard({ word: selectedText, translation, cefrLevel: null, ...cardPos });
       return;
     }
 
@@ -379,10 +392,10 @@ export default function PdfReader() {
     e.currentTarget.style.background = colors.word.activeBackground;
 
     const rect = e.currentTarget.getBoundingClientRect();
-    const pos = { x: rect.left, y: rect.bottom + 8 };
+    const cardPos = computeCardPos(rect, e.clientX);
     setCard(null);
     setWordStatus(null);
-    setLoadingPos(pos);
+    setLoadingPos({ x: e.clientX, y: rect.bottom + 8 });
 
     const isSingle = !word.includes(' ');
     const [translation, status] = await Promise.all([
@@ -392,7 +405,7 @@ export default function PdfReader() {
         : Promise.resolve(null),
     ]);
     setLoadingPos(null);
-    setCard({ word, translation, cefrLevel: getCefrLevel(word, sourceLang), ...pos });
+    setCard({ word, translation, cefrLevel: getCefrLevel(word, sourceLang), ...cardPos });
     setWordStatus(status);
   }, [sourceLang]);
 
@@ -794,13 +807,13 @@ export default function PdfReader() {
             activeSpanRef.current.style.background = colors.word.background;
             activeSpanRef.current = null;
           }
-          const pos = { x: selRect.left, y: selRect.bottom + 8 };
+          const cardPos = computeCardPos(selRect);
           setCard(null);
           setWordStatus(null);
-          setLoadingPos(pos);
+          setLoadingPos({ x: selRect.left, y: selRect.bottom + 8 });
           translateWord(selectedText, sourceLang).then(translation => {
             setLoadingPos(null);
-            setCard({ word: selectedText, translation, cefrLevel: null, ...pos });
+            setCard({ word: selectedText, translation, cefrLevel: null, ...cardPos });
           });
           return;
         }
@@ -898,7 +911,8 @@ export default function PdfReader() {
           onClick={(e) => e.stopPropagation()}
           style={{
             position: "fixed",
-            top: card.y,
+            top: card.top ?? 'auto',
+            bottom: card.bottom ?? 'auto',
             left: card.x,
             background: colors.card.background,
             border: `1px solid ${colors.card.border}`,
@@ -908,6 +922,8 @@ export default function PdfReader() {
             padding: "12px 16px",
             minWidth: 200,
             maxWidth: 320,
+            maxHeight: window.innerHeight - 32,
+            overflowY: 'auto',
             zIndex: 9999,
           }}
         >
