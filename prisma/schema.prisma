@@ -34,6 +34,7 @@ model Word {
   translation String
   sourceLang  String
   targetLang  String
+  isHidden    Boolean      @default(false)
   addedAt     DateTime     @default(now())
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   activeWords ActiveWord[]
@@ -45,6 +46,7 @@ model ActiveWord {
   id             Int       @id @default(autoincrement())
   userId         Int
   wordId         Int
+  isHidden       Boolean   @default(false)
   addedAt        DateTime  @default(now())
   lastReviewedAt DateTime?
   user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)

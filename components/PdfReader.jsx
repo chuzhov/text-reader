@@ -95,6 +95,9 @@ export default function PdfReader() {
   const [filesLoaded, setFilesLoaded] = useState(false);
   const [showFilePanel, setShowFilePanel] = useState(false);
   const [panelWidth, setPanelWidth] = useState(284);
+  const [wordStatus, setWordStatus] = useState(null); // { inVocab, isActive } | null
+  const [starSaving, setStarSaving] = useState(false);
+  const [bookSaving, setBookSaving] = useState(false);
   const [fileUrl, setFileUrl] = useState('');
   const [fileUrlError, setFileUrlError] = useState(null);
   const [uploadLoading, setUploadLoading] = useState(false);
@@ -334,6 +337,9 @@ export default function PdfReader() {
     }
     setCard(null);
     setLoadingPos(null);
+    setWordStatus(null);
+    setStarSaving(false);
+    setBookSaving(false);
     setCloseHovered(false);
     setBookHovered(false);
     setStarHovered(false);
@@ -354,6 +360,7 @@ export default function PdfReader() {
       }
       const pos = { x: selRect.left, y: selRect.bottom + 8 };
       setCard(null);
+      setWordStatus(null);
       setLoadingPos(pos);
       const translation = await translateWord(selectedText, sourceLang);
       setLoadingPos(null);
@@ -361,7 +368,7 @@ export default function PdfReader() {
       return;
     }
 
-    const word = getWordAtPoint(e.clientX, e.clientY, e.currentTarget.textContent);
+    const word = getWordAtPoint(e.clientX, e.clientY, e.currentTarget.textContent).replace(/[.,;:!?"'…]+$/, '');
 
     if (activeSpanRef.current) {
       activeSpanRef.current.style.background = colors.word.background;
@@ -372,10 +379,19 @@ export default function PdfReader() {
     const rect = e.currentTarget.getBoundingClientRect();
     const pos = { x: rect.left, y: rect.bottom + 8 };
     setCard(null);
+    setWordStatus(null);
     setLoadingPos(pos);
-    const translation = await translateWord(word, sourceLang);
+
+    const isSingle = !word.includes(' ');
+    const [translation, status] = await Promise.all([
+      translateWord(word, sourceLang),
+      isSingle
+        ? fetch(`/api/vocabulary/check?word=${encodeURIComponent(word)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null)
+        : Promise.resolve(null),
+    ]);
     setLoadingPos(null);
     setCard({ word, translation, cefrLevel: getCefrLevel(word, sourceLang), ...pos });
+    setWordStatus(status);
   }, [sourceLang]);
 
   return (
@@ -778,6 +794,7 @@ export default function PdfReader() {
           }
           const pos = { x: selRect.left, y: selRect.bottom + 8 };
           setCard(null);
+          setWordStatus(null);
           setLoadingPos(pos);
           translateWord(selectedText, sourceLang).then(translation => {
             setLoadingPos(null);
@@ -892,7 +909,7 @@ export default function PdfReader() {
             zIndex: 9999,
           }}
         >
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 4 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <div style={{ fontWeight: 600, fontSize: 16, color: colors.card.word }}>
                 {card.word}
@@ -928,7 +945,6 @@ export default function PdfReader() {
               ×
             </button>
           </div>
-          <div style={{ height: 48 }} />
           <div style={{ fontSize: 14, color: colors.card.translation }}>
             {card.translation}
           </div>
@@ -936,49 +952,77 @@ export default function PdfReader() {
             <button
               onMouseEnter={() => setStarHovered(true)}
               onMouseLeave={() => setStarHovered(false)}
+              onClick={async () => {
+                if (!card || wordStatus?.isActive || card.word.includes(' ') || starSaving) return;
+                setStarSaving(true);
+                const res = await fetch('/api/vocabulary/active', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ word: card.word, translation: card.translation, sourceLang, targetLang }),
+                });
+                setStarSaving(false);
+                if (res.ok) setWordStatus({ inVocab: true, isActive: true });
+              }}
               style={{
                 width: 36,
                 height: 36,
                 background: "none",
                 border: `1px solid ${colors.card.border}`,
                 borderRadius: 4,
-                cursor: "pointer",
+                cursor: card && !wordStatus?.isActive && !card.word.includes(' ') && !starSaving ? "pointer" : "default",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 padding: 0,
-                color: starHovered ? colors.icon.hover : colors.icon.default,
+                color: wordStatus?.isActive ? colors.icon.hover : (starHovered ? colors.icon.hover : colors.icon.default),
               }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>
-              </svg>
+              {starSaving
+                ? <div className="pdf-spinner" style={{ width: 16, height: 16 }} />
+                : <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill={wordStatus?.isActive ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>
+                  </svg>
+              }
             </button>
             <button
               onMouseEnter={() => setBookHovered(true)}
               onMouseLeave={() => setBookHovered(false)}
+              onClick={async () => {
+                if (!card || wordStatus?.inVocab || card.word.includes(' ') || bookSaving) return;
+                setBookSaving(true);
+                const res = await fetch('/api/vocabulary', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ word: card.word, translation: card.translation, sourceLang, targetLang }),
+                });
+                setBookSaving(false);
+                if (res.ok) setWordStatus(prev => ({ ...prev, inVocab: true }));
+              }}
               style={{
                 width: 36,
                 height: 36,
                 background: "none",
                 border: `1px solid ${colors.card.border}`,
                 borderRadius: 4,
-                cursor: "pointer",
+                cursor: card && !wordStatus?.inVocab && !card.word.includes(' ') && !bookSaving ? "pointer" : "default",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 padding: 0,
-                color: bookHovered ? colors.icon.hover : colors.icon.default,
+                color: wordStatus?.inVocab ? colors.icon.hover : (bookHovered ? colors.icon.hover : colors.icon.default),
               }}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M12 7v14"/>
-                <path d="M16 12h2"/>
-                <path d="M16 8h2"/>
-                <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>
-                <path d="M6 12h2"/>
-                <path d="M6 8h2"/>
-              </svg>
+              {bookSaving
+                ? <div className="pdf-spinner" style={{ width: 16, height: 16 }} />
+                : <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 7v14"/>
+                    <path d="M16 12h2"/>
+                    <path d="M16 8h2"/>
+                    <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>
+                    <path d="M6 12h2"/>
+                    <path d="M6 8h2"/>
+                  </svg>
+              }
             </button>
           </div>
         </div>
