@@ -74,16 +74,36 @@ const PageView = React.memo(function PageView({ page, isVisible, onWordClick }) 
 export default function PdfReader() {
   const { data: session } = useSession();
   const userInitial = session?.user?.email?.[0]?.toUpperCase() ?? '?';
+
   const [pages, setPages] = useState([]);
   const [sourceLang, setSourceLang] = useState("en");
   const [card, setCard] = useState(null);
   const [loadingPos, setLoadingPos] = useState(null);
   const [visiblePages, setVisiblePages] = useState(new Set());
-  const [bookHovered, setBookHovered] = useState(false);
+  const [targetLang] = useState("ru");
+
+  const deviceType = (() => {
+    if (typeof window === 'undefined') return 'desktop';
+    const isTouch = window.matchMedia('(pointer: coarse)').matches;
+    if (!isTouch) return 'desktop';
+    return window.innerWidth < 768 ? 'mobile' : 'tablet';
+  })();
+
+  // File management
+  const [pdfPath, setPdfPath] = useState(null);
+  const [userFiles, setUserFiles] = useState([]);
+  const [filesLoaded, setFilesLoaded] = useState(false);
+  const [showFilePanel, setShowFilePanel] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(284);
+  const [fileUrl, setFileUrl] = useState('');
+  const [fileUrlError, setFileUrlError] = useState(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+
+  // Hover states
+  const [bookshelfHovered, setBookshelfHovered] = useState(false);
   const [starHovered, setStarHovered] = useState(false);
   const [closeHovered, setCloseHovered] = useState(false);
-  const [bookshelfHovered, setBookshelfHovered] = useState(false);
-  const [targetLang] = useState("ru");
+  const [bookHovered, setBookHovered] = useState(false);
   const [sourceLangHovered, setSourceLangHovered] = useState(false);
   const [targetLangHovered, setTargetLangHovered] = useState(false);
   const [settingsHovered, setSettingsHovered] = useState(false);
@@ -92,7 +112,15 @@ export default function PdfReader() {
 
   const containerRef = useRef(null);
   const userMenuRef = useRef(null);
+  const filePanelRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const observerRef = useRef(null);
+  const activeSpanRef = useRef(null);
+  const pendingScrollRef = useRef(null);
+  const currentFileIdRef = useRef(null);
+  const scrollSaveTimerRef = useRef(null);
 
+  // Close user menu on outside click
   useEffect(() => {
     if (!userMenuOpen) return;
     const handleOutside = (e) => {
@@ -103,17 +131,72 @@ export default function PdfReader() {
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
   }, [userMenuOpen]);
-  const observerRef = useRef(null);
-  const activeSpanRef = useRef(null);
 
+  // Close file panel on outside click
   useEffect(() => {
-    extractPdf("/sample.pdf").then(({ pages, sourceLang }) => {
-      setPages(pages);
-      setSourceLang(sourceLang);
-    });
+    if (!showFilePanel) return;
+    const handleOutside = (e) => {
+      if (filePanelRef.current && !filePanelRef.current.contains(e.target)) {
+        setShowFilePanel(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [showFilePanel]);
+
+  // Resize panel to fit the longest filename, up to the available viewport width
+  useEffect(() => {
+    if (!showFilePanel) return;
+    function calcWidth() {
+      // scrollbar = 10px (matches .pdf-scroll-container::-webkit-scrollbar width)
+      // left edge of panel = 56px (sidebar 48 + gap 8), right gap = 8px
+      const maxWidth = window.innerWidth - 56 - 10 - 8;
+      let needed = 284;
+      if (userFiles.length > 0) {
+        const probe = document.createElement('span');
+        probe.style.cssText = 'position:absolute;left:-9999px;visibility:hidden;white-space:nowrap;font-size:12px';
+        document.body.appendChild(probe);
+        let maxTextW = 0;
+        for (const f of userFiles) {
+          probe.textContent = f.name;
+          const w = probe.getBoundingClientRect().width;
+          if (w > maxTextW) maxTextW = w;
+        }
+        document.body.removeChild(probe);
+        // row: 14px left-pad + 14px icon + 8px gap + text + 8px breathing room + 23px trash (icon 13 + padding-right 10)
+        needed = Math.max(284, Math.ceil(14 + 14 + 8 + maxTextW + 8 + 23));
+      }
+      setPanelWidth(Math.min(needed, maxWidth));
+    }
+    calcWidth();
+    window.addEventListener('resize', calcWidth);
+    return () => window.removeEventListener('resize', calcWidth);
+  }, [showFilePanel, userFiles]);
+
+  // Load most recent file on mount
+  useEffect(() => {
+    fetch('/api/files')
+      .then(r => r.ok ? r.json() : Promise.reject(r.status))
+      .then(({ files }) => {
+        const list = files || [];
+        setUserFiles(list);
+        setFilesLoaded(true);
+        if (list.length > 0) {
+          loadFile(`/api/files/${list[0].id}/content`, list[0].id, list[0].scrollOffset);
+        }
+      })
+      .catch(() => setFilesLoaded(true));
   }, []);
 
-  // Single IntersectionObserver for all pages, using the scroll div as root
+  // Restore scroll position after pages render
+  useEffect(() => {
+    if (pages.length > 0 && pendingScrollRef.current !== null) {
+      containerRef.current?.scrollTo({ top: pendingScrollRef.current });
+      pendingScrollRef.current = null;
+    }
+  }, [pages]);
+
+  // Single IntersectionObserver for all pages
   useEffect(() => {
     if (!containerRef.current) return;
     observerRef.current = new IntersectionObserver(
@@ -160,6 +243,90 @@ export default function PdfReader() {
     if (el && observerRef.current) observerRef.current.observe(el);
   }, []);
 
+  async function loadFile(filePath, fileId, scrollOffset = 0) {
+    setPdfPath(filePath);
+    setPages([]);
+    setShowFilePanel(false);
+    pendingScrollRef.current = scrollOffset;
+    currentFileIdRef.current = fileId;
+    const { pages: p, sourceLang: sl } = await extractPdf(filePath);
+    setPages(p);
+    setSourceLang(sl);
+    if (fileId) {
+      fetch(`/api/files/${fileId}/open`, { method: 'PATCH' });
+    }
+  }
+
+  async function handleFileUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    setUploadLoading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch('/api/files', { method: 'POST', body: formData });
+    const data = await res.json();
+    setUploadLoading(false);
+    if (data.file) {
+      setUserFiles(prev => [data.file, ...prev.filter(f => f.id !== data.file.id)]);
+      loadFile(`/api/files/${data.file.id}/content`, data.file.id, 0);
+    }
+  }
+
+  async function handleUrlLoad() {
+    const url = fileUrl.trim();
+    if (!url) return;
+    setUploadLoading(true);
+    setFileUrlError(null);
+    const res = await fetch('/api/files', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    setUploadLoading(false);
+    if (data.file) {
+      setFileUrl('');
+      setUserFiles(prev => [data.file, ...prev.filter(f => f.id !== data.file.id)]);
+      loadFile(`/api/files/${data.file.id}/content`, data.file.id, 0);
+    } else {
+      setFileUrlError(data.error || 'Failed to load URL');
+    }
+  }
+
+  function handleCloseFile(e) {
+    e.stopPropagation();
+    setPdfPath(null);
+    setPages([]);
+    currentFileIdRef.current = null;
+    setShowFilePanel(false);
+  }
+
+  async function handleDeleteFile(e, fileId) {
+    e.stopPropagation();
+    await fetch(`/api/files/${fileId}`, { method: 'DELETE' });
+    setUserFiles(prev => prev.filter(f => f.id !== fileId));
+    if (currentFileIdRef.current === fileId) {
+      setPdfPath(null);
+      setPages([]);
+      currentFileIdRef.current = null;
+    }
+  }
+
+  // Debounced scroll offset save — fires 1 s after last scroll event
+  const handleScroll = useCallback(() => {
+    if (!currentFileIdRef.current) return;
+    clearTimeout(scrollSaveTimerRef.current);
+    scrollSaveTimerRef.current = setTimeout(() => {
+      const scrollTop = containerRef.current?.scrollTop ?? 0;
+      fetch(`/api/files/${currentFileIdRef.current}/scroll`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scrollOffset: Math.round(scrollTop) }),
+      });
+    }, 1000);
+  }, []);
+
   function closeCard() {
     if (activeSpanRef.current) {
       activeSpanRef.current.style.background = colors.word.background;
@@ -196,7 +363,6 @@ export default function PdfReader() {
 
     const word = getWordAtPoint(e.clientX, e.clientY, e.currentTarget.textContent);
 
-    // Active highlight via direct DOM — avoids triggering a React re-render
     if (activeSpanRef.current) {
       activeSpanRef.current.style.background = colors.word.background;
     }
@@ -214,6 +380,7 @@ export default function PdfReader() {
 
   return (
     <>
+    {/* Sidebar */}
     <div
       style={{
         position: "fixed",
@@ -230,17 +397,20 @@ export default function PdfReader() {
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, marginTop: 8 }}>
+        {/* Bookshelf / Open file */}
         <button
           onMouseEnter={() => setBookshelfHovered(true)}
           onMouseLeave={() => setBookshelfHovered(false)}
+          onClick={() => setShowFilePanel(v => !v)}
           style={{
-            background: "none",
+            background: showFilePanel ? colors.app.background : "none",
             border: "none",
             padding: 0,
             cursor: "pointer",
+            borderRadius: 6,
           }}
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 32 32" fill={bookshelfHovered ? colors.icon.hover : colors.icon.default}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 32 32" fill={bookshelfHovered || showFilePanel ? colors.icon.hover : colors.icon.default}>
             <rect x="4" y="2" width="24" height="28" stroke={colors.icon.default} fill="none" strokeWidth="2"/>
             <line x1="4" y1="10" x2="28" y2="10" stroke={colors.icon.default} strokeWidth="2"/>
             <line x1="4" y1="18" x2="28" y2="18" stroke={colors.icon.default} strokeWidth="2"/>
@@ -396,8 +566,207 @@ export default function PdfReader() {
         </div>
       </div>
     </div>
+
+    {/* File panel */}
+    {showFilePanel && (
+      <div
+        ref={filePanelRef}
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: "fixed",
+          left: 56,
+          top: 8,
+          width: panelWidth,
+          background: colors.card.background,
+          border: `1px solid ${colors.card.border}`,
+          boxShadow: colors.card.shadow,
+          borderRadius: 8,
+          zIndex: 9999,
+          overflow: "hidden",
+        }}
+      >
+        <div style={{
+          padding: "10px 14px",
+          borderBottom: `1px solid ${colors.card.border}`,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>Open PDF</span>
+          <button
+            onClick={() => setShowFilePanel(false)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: colors.card.close, fontSize: 18, lineHeight: 1, padding: 0 }}
+          >×</button>
+        </div>
+
+        <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,application/pdf"
+            style={{ display: "none" }}
+            onChange={handleFileUpload}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadLoading}
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              background: colors.filePanel.uploadBtnBg,
+              border: `1px solid ${colors.filePanel.uploadBtnBorder}`,
+              borderRadius: 6,
+              cursor: uploadLoading ? "not-allowed" : "pointer",
+              color: colors.filePanel.uploadBtnColor,
+              fontSize: 13,
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 6,
+            }}
+          >
+            {uploadLoading ? "Loading…" : (
+              <>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+                Upload from PC
+              </>
+            )}
+          </button>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <input
+              type="url"
+              value={fileUrl}
+              onChange={e => { setFileUrl(e.target.value); setFileUrlError(null); }}
+              onKeyDown={e => { if (e.key === 'Enter') handleUrlLoad(); }}
+              placeholder="Paste PDF URL…"
+              style={{
+                flex: 1,
+                padding: "6px 10px",
+                border: `1px solid ${fileUrlError ? '#ef4444' : colors.card.border}`,
+                borderRadius: 6,
+                fontSize: 12,
+                background: colors.filePanel.urlInputBg,
+                outline: "none",
+              }}
+            />
+            <button
+              onClick={handleUrlLoad}
+              disabled={uploadLoading || !fileUrl.trim()}
+              style={{
+                padding: "6px 12px",
+                background: fileUrl.trim() ? colors.icon.hover : colors.card.border,
+                border: "none",
+                borderRadius: 6,
+                cursor: fileUrl.trim() && !uploadLoading ? "pointer" : "not-allowed",
+                color: "#fff",
+                fontSize: 12,
+                fontWeight: 600,
+                flexShrink: 0,
+              }}
+            >
+              Load
+            </button>
+          </div>
+          {fileUrlError && (
+            <div style={{ fontSize: 11, color: "#ef4444" }}>{fileUrlError}</div>
+          )}
+        </div>
+
+        <div style={{ borderTop: `1px solid ${colors.card.border}` }}>
+            <div style={{
+              padding: "6px 14px 4px",
+              fontSize: 11,
+              color: colors.filePanel.sectionLabel,
+              fontWeight: 600,
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+            }}>
+              Books
+            </div>
+            <div style={{ maxHeight: 220, overflowY: "auto" }}>
+              {userFiles.map(f => {
+                const isActive = `/api/files/${f.id}/content` === pdfPath;
+                return (
+                  <div
+                    key={f.id}
+                    className={`book-row${isActive ? ' book-row-active' : ''}`}
+                    style={{ display: "flex", alignItems: "center" }}
+                  >
+                    <button
+                      onClick={() => {
+                        if (isActive) { setShowFilePanel(false); return; }
+                        setUserFiles(prev => [f, ...prev.filter(ff => ff.id !== f.id)]);
+                        loadFile(`/api/files/${f.id}/content`, f.id, f.scrollOffset);
+                      }}
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "7px 0 7px 14px",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        textAlign: "left",
+                        gap: 8,
+                        minWidth: 0,
+                      }}
+                    >
+                      {isActive ? (
+                        <>
+                          {deviceType === 'mobile' ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="book-row-device-icon book-row-icon">
+                              <rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/>
+                            </svg>
+                          ) : deviceType === 'tablet' ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="book-row-device-icon book-row-icon">
+                              <rect x="3" y="2" width="18" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/>
+                            </svg>
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="book-row-device-icon book-row-icon">
+                              <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
+                            </svg>
+                          )}
+                          <span className="book-row-close" onClick={handleCloseFile}>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                          </span>
+                        </>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="book-row-icon" style={{ flexShrink: 0 }}>
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14 2 14 8 20 8"/>
+                        </svg>
+                      )}
+                      <span className="book-row-name">{f.name}</span>
+                    </button>
+                    <button className="book-row-trash" onClick={(e) => handleDeleteFile(e, f.id)}>
+                      <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6"/>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                        <path d="M10 11v6"/><path d="M14 11v6"/>
+                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                      </svg>
+                    </button>
+                  </div>
+                );
+              })}
+              <div style={{ height: 28 }} />
+            </div>
+          </div>
+      </div>
+    )}
+
+    {/* Main scroll area */}
     <div
       ref={containerRef}
+      onScroll={handleScroll}
       onClick={() => {
         const selectedText = getSelectedText();
         if (selectedText) {
@@ -431,6 +800,53 @@ export default function PdfReader() {
         userSelect: (card || loadingPos) ? "none" : "text",
       }}
     >
+      {/* Empty state */}
+      {filesLoaded && pdfPath === null && (
+        <div style={{
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 12,
+          color: colors.icon.default,
+        }}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4 }}>
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <div style={{ fontSize: 15, fontWeight: 500, color: "#6b7280" }}>No PDF open</div>
+          <button
+            onClick={() => setShowFilePanel(true)}
+            style={{
+              marginTop: 4,
+              padding: "8px 20px",
+              background: colors.icon.hover,
+              border: "none",
+              borderRadius: 6,
+              cursor: "pointer",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            Open PDF
+          </button>
+        </div>
+      )}
+
+      {/* PDF loading indicator */}
+      {pdfPath !== null && pages.length === 0 && (
+        <div style={{
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <div className="pdf-spinner" />
+        </div>
+      )}
+
       <div style={{ paddingTop: 20, paddingBottom: 20 }}>
         {pages.map(page => (
           <div
@@ -453,9 +869,7 @@ export default function PdfReader() {
       </div>
 
       {loadingPos && (
-        <div
-          style={{ position: "fixed", top: loadingPos.y, left: loadingPos.x, zIndex: 9999 }}
-        >
+        <div style={{ position: "fixed", top: loadingPos.y, left: loadingPos.x, zIndex: 9999 }}>
           <div className="pdf-spinner" />
         </div>
       )}

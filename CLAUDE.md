@@ -8,7 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev      # Dev server at http://localhost:3000
 npm run build    # Production build
 npm start        # Run production build
-npx prisma migrate dev   # Apply migrations and regenerate client
+npx prisma migrate dev   # Apply migrations (does NOT regenerate the client in Prisma 7)
+npx prisma generate      # Regenerate client after schema changes — always run after migrate
 npx prisma db seed       # Seed test user (testuser@email.com / 12345678)
 npx prisma studio        # GUI for the SQLite database
 ```
@@ -19,15 +20,17 @@ No test framework is configured.
 
 ## Architecture
 
-Next.js 15 / React 19 app that renders a hardcoded PDF (`/public/sample.pdf`) with word-level click-to-translate floating cards. No TypeScript, no CSS framework — all styling is inline.
+Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate floating cards. Users upload PDFs from their PC or by URL; the most recently opened file is auto-loaded on mount. No TypeScript, no CSS framework — all styling is inline.
 
 **Data flow:**
 
-1. `components/PdfReader.jsx` mounts and calls `extractPdf("/sample.pdf")`
-2. `utils/pdf_processor.js` uses pdfjs-dist (worker fetched from cdnjs CDN — requires internet) to extract text items with transform matrix positions; also reads `dc:language` from PDF metadata (falls back to `"en"`)
+1. `components/PdfReader.jsx` mounts and fetches `GET /api/files`; if the user has files, calls `extractPdf("/api/files/{id}/content")` for the most recently opened one and restores its saved scroll position
+2. `utils/pdf_processor.js` uses pdfjs-dist to extract text items with transform matrix positions; also reads `dc:language` from PDF metadata (falls back to `"en"`). The worker is served from `/pdf.worker.min.js` (copied from `node_modules/pdfjs-dist/build/pdf.worker.min.js` to `public/` by the webpack build hook in `next.config.mjs` — no CDN dependency)
 3. `extractPdf` returns `{ pages, sourceLang }` — `sourceLang` is the BCP-47 primary tag (e.g. `"en"`)
 4. Extracted words with absolute `{ x, y }` coordinates are rendered as `position: absolute` spans inside per-page containers
 5. On click, `translateWord(word, sourceLang)` POSTs to `/api/translate`, which proxies to the free MyMemory API (`api.mymemory.translated.net`) with `langpair=sourceLang|ru` — no API key, falls back to original text on error
+
+**File storage:** Uploaded files are saved to `uploads/` at the project root (outside `public/`) and served via the authenticated `GET /api/files/[id]/content` route. Files must **not** be stored in `public/` — Next.js production only serves static files that existed at build time; dynamically-added files in `public/` return 404. The `uploads/` directory is in `.gitignore`.
 
 **PDF extraction pipeline** (`utils/pdf_processor.js`):
 - `groupByY(items, tolerance=2.5)` — clusters text items into lines using `transform[5]` (Y)
@@ -36,11 +39,16 @@ Next.js 15 / React 19 app that renders a hardcoded PDF (`/public/sample.pdf`) wi
 - Before processing, duplicate text items at the same integer-rounded position are filtered out (some PDFs embed the same text twice at identical coordinates).
 
 **State** (all local in `PdfReader`):
-- `pages` — `[{ pageNum, width, height, words: [{ text, x, y }] }]`, set once on mount
-- `sourceLang` — BCP-47 primary tag read from PDF metadata on mount (e.g. `"en"`), passed to every translation call
+- `pages` — `[{ pageNum, width, height, words: [{ text, x, y }] }]`, set once per file load
+- `sourceLang` — BCP-47 primary tag read from PDF metadata on load (e.g. `"en"`), passed to every translation call
 - `targetLang` — translation target language code (currently hardcoded `"ru"`); drives the target-lang button label in the sidebar
 - `card` — `{ word, translation, cefrLevel, x, y }` or `null`; `translation` is `null` while the API call is in flight (shows "Translating…"); `cefrLevel` is `null` for multi-word selections
 - `visiblePages` — `Set<number>` of page numbers currently in (or near) the viewport, maintained by `IntersectionObserver`
+- `pdfPath` — current `/api/files/{id}/content` URL being rendered, or `null` if no file is open
+- `userFiles` — array of the user's `UserFile` records from the API, sorted by most recently opened
+- `filesLoaded` — `false` until the initial `/api/files` fetch completes; gates the empty state render
+- `showFilePanel` — whether the file picker panel is open
+- `fileUrl` / `fileUrlError` / `uploadLoading` — URL input value, last upload error, and in-flight flag for the file panel
 
 **Virtualization:**
 - `PageView` is wrapped in `React.memo` — it only re-renders when `isVisible` flips
@@ -53,13 +61,14 @@ Next.js 15 / React 19 app that renders a hardcoded PDF (`/public/sample.pdf`) wi
 All colors live in `utils/theme.js` as a single `colors` object, **namespaced by feature**:
 
 ```js
-colors.app.*      // top-level shell
-colors.sidebar.*  // fixed left sidebar (background, langGroup pill)
-colors.page.*     // per-page container
-colors.word.*     // word spans
-colors.icon.*     // shared icon tints — default and hover
-colors.cefr.*     // CEFR level badge colors keyed by level (A1–C2)
-colors.card.*     // translation card
+colors.app.*       // top-level shell
+colors.sidebar.*   // fixed left sidebar (background, langGroup pill)
+colors.page.*      // per-page container
+colors.word.*      // word spans
+colors.icon.*      // shared icon tints — default and hover
+colors.cefr.*      // CEFR level badge colors keyed by level (A1–C2)
+colors.card.*      // translation card
+colors.filePanel.* // file picker panel (upload button, URL input, recent file list items)
 ```
 
 When adding a new UI element, add a new namespace rather than mixing tokens into an existing one. Import `colors` wherever styles are needed; never hardcode color values inline.
@@ -83,12 +92,15 @@ When adding a new UI element, add a new namespace rather than mixing tokens into
 
 **Database:** SQLite (`prisma/dev.db`) via Prisma 7 with the LibSQL adapter (`@prisma/adapter-libsql`). Client generated to `app/generated/prisma/` as TypeScript-only ESM. Webpack `extensionAlias` in `next.config.mjs` maps `.js` → `.ts` so generated deep imports resolve. Singleton in `lib/prisma.js` — stored on `globalThis` in dev mode to survive HMR.
 
+**Prisma 7 quirk:** `prisma migrate dev` applies the migration but does **not** regenerate the client automatically. Always follow it with `npx prisma generate`, otherwise the runtime client will be out of sync with the schema (missing new models/fields).
+
 **Schema models:**
-- `User` — email + bcrypt-hashed password; owns `UserSettings`, `Word`, `ActiveWord`, `UserVisit`
+- `User` — email + bcrypt-hashed password; owns `UserSettings`, `Word`, `ActiveWord`, `UserVisit`, `UserFile`
 - `UserSettings` — per-user `sourceLang`/`targetLang` defaults (created with user on registration)
 - `Word` — saved vocabulary entries; unique on `(userId, word, sourceLang)`
 - `ActiveWord` — words currently being studied; unique on `(userId, wordId)`
 - `UserVisit` — one row per sign-in; `lastVisitedAt` stamped on word click and logout via `POST /api/visit/ping`
+- `UserFile` — uploaded PDF metadata; `path` stores only the filename (not a URL); `scrollOffset` (int px) is restored when the file is reopened; `lastOpenedAt` drives the "most recent" sort order
 
 **API routes** (all require a valid session except `/api/auth/*`):
 - `POST /api/auth/register` — create account; hashes password with bcrypt, creates default `UserSettings`
@@ -97,6 +109,11 @@ When adding a new UI element, add a new namespace rather than mixing tokens into
 - `POST /api/vocabulary` — upsert a word into the user's vocabulary
 - `POST /api/vocabulary/active` — upsert word + mark it active (for study mode)
 - `DELETE /api/vocabulary/active` — remove a word from active study list
+- `GET /api/files` — list user's `UserFile` records sorted by `lastOpenedAt desc, uploadedAt desc`
+- `POST /api/files` — upload a PDF; accepts multipart `file` field or JSON `{ url }`; validates PDF magic bytes; saves to `uploads/` at project root; returns the created `UserFile` record
+- `GET /api/files/[id]/content` — stream a PDF file from `uploads/` with auth + ownership check
+- `PATCH /api/files/[id]/open` — stamp `lastOpenedAt` to now (called when a file is opened)
+- `PATCH /api/files/[id]/scroll` — save `scrollOffset` (integer px) without touching `lastOpenedAt`
 
 **Session shape** (extended by JWT callbacks):
 ```js
@@ -107,5 +124,4 @@ session.user.visitId  // String(userVisit.id) — created at sign-in
 ## Notes
 
 - `main.jsx` at the project root is an unused draft with broken imports; the active component is `components/PdfReader.jsx`
-- The PDF path is hardcoded in `PdfReader`; there is no file upload UI
 - `components/PdfReaderWrapper.jsx` wraps `PdfReader` with `next/dynamic` (`ssr: false`) — needed because pdfjs-dist uses browser APIs

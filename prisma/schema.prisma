@@ -16,6 +16,7 @@ model User {
   words        Word[]
   activeWords  ActiveWord[]
   visits       UserVisit[]
+  files        UserFile[]
 }
 
 model UserSettings {
@@ -58,4 +59,15 @@ model UserVisit {
   visitedAt     DateTime  @default(now())
   lastVisitedAt DateTime?
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserFile {
+  id           Int       @id @default(autoincrement())
+  userId       Int
+  name         String
+  path         String
+  scrollOffset Int       @default(0)
+  uploadedAt   DateTime  @default(now())
+  lastOpenedAt DateTime?
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

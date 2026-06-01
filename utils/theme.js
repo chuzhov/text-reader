@@ -26,6 +26,14 @@ export const colors = {
     C1: "#FF5722",
     C2: "#F44336",
   },
+  filePanel: {
+    uploadBtnBg: "#fff7ed",
+    uploadBtnBorder: "#F97316",
+    uploadBtnColor: "#F97316",
+    urlInputBg: "#f9fafb",
+    sectionLabel: "#9CA3AF",
+    itemHoverBg: "#f5f5f5",
+  },
   card: {
     background: "#ffffff",
     border: "#e0e0e0",

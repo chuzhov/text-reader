@@ -1,3 +1,23 @@
+/* Global token — active/hover menu item background (matches Log out hover) */
+:root { --menu-item-hover-bg: #f5f5f5; }
+
+/* Book list row hover — CSS-driven to avoid React re-render layout shift */
+.book-row:hover { background: var(--menu-item-hover-bg); }
+.book-row-icon { stroke: #9CA3AF; }
+.book-row:hover .book-row-icon { stroke: #F97316; }
+.book-row-name { color: #374151; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.book-row:hover .book-row-name { color: #F97316; }
+/* device icon — shown for active file by default; hidden on hover to reveal × */
+.book-row-device-icon { flex-shrink: 0; width: 14px; height: 14px; }
+.book-row.book-row-active:hover .book-row-device-icon { display: none; }
+/* × close — hidden; appears only when hovering the active row */
+.book-row-close { display: none; color: #F97316; flex-shrink: 0; width: 14px; height: 14px; padding: 0; background: none; border: none; cursor: pointer; }
+.book-row.book-row-active:hover .book-row-close { display: inline-flex; align-items: center; justify-content: center; }
+/* trashcan — visible only on hover or keyboard focus */
+.book-row-trash { display: none; color: #9CA3AF; flex-shrink: 0; padding: 0 10px 0 0; background: none; border: none; cursor: pointer; line-height: 1; }
+.book-row:hover .book-row-trash, .book-row:focus-within .book-row-trash { display: flex; align-items: center; }
+.book-row-trash:hover { color: #F97316; }
+
 @keyframes pdf-spin {
   to { transform: rotate(360deg); }
 }
