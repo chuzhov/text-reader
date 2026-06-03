@@ -38,6 +38,13 @@ function getWordAtPoint(x, y, fallback) {
   return fallback;
 }
 
+function flattenOutline(items) {
+  return items.flatMap(item => [
+    { title: item.title, pageNum: item.pageNum, level: item.level },
+    ...flattenOutline(item.items ?? []),
+  ]);
+}
+
 // Returns { x, top, bottom } — exactly one of top/bottom is a number, the other is null.
 // Using CSS bottom when flipping above avoids needing to know the card's actual height.
 function computeCardPos(anchorRect, xAnchor) {
@@ -52,33 +59,62 @@ function computeCardPos(anchorRect, xAnchor) {
 }
 
 // Memoized — only re-renders when isVisible flips or page data changes
-const PageView = React.memo(function PageView({ page, isVisible, onWordClick }) {
+const PageView = React.memo(function PageView({ page, isVisible, onWordClick, onLinkClick }) {
   return (
     <div style={{ background: colors.page.background }}>
       <div style={{ fontSize: 12, color: colors.page.label, padding: "4px 8px" }}>
         Page {page.pageNum}
       </div>
       <div style={{ position: "relative", width: page.width, height: page.height }}>
-        {isVisible && page.words.map((w, i) => (
-          <span
-            key={i}
-            onClick={onWordClick}
-            style={{
-              position: "absolute",
-              left: w.x,
-              top: w.y,
-              fontSize: w.fontSize,
-              lineHeight: 1,
-              whiteSpace: "nowrap",
-              cursor: "pointer",
-              background: colors.word.background,
-              padding: "1px 3px",
-              borderRadius: 3,
-            }}
-          >
-            {w.text}
-          </span>
-        ))}
+        {isVisible && page.words.map((w, i) => {
+          const isLink = w.linkPageNum != null;
+          return (
+            <span
+              key={i}
+              onClick={onWordClick}
+              style={{
+                position: "absolute",
+                left: w.x,
+                top: w.y,
+                fontSize: w.fontSize,
+                lineHeight: 1,
+                whiteSpace: "nowrap",
+                cursor: "pointer",
+                background: colors.word.background,
+                padding: "1px 3px",
+                borderRadius: 3,
+                color: isLink ? colors.word.linkColor : undefined,
+              }}
+            >
+              {w.text}
+              {w.isLinkEnd && (
+                <span
+                  onClick={(e) => { e.stopPropagation(); onLinkClick(w.linkPageNum); }}
+                  title={`Go to page ${w.linkPageNum}`}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    marginLeft: 3,
+                    cursor: "pointer",
+                    color: colors.word.linkIconColor,
+                    verticalAlign: "middle",
+                    opacity: 0.75,
+                  }}
+                >
+                  <svg
+                    width="10" height="10" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                    style={{ transform: w.linkPageNum > page.pageNum ? 'scaleY(-1)' : undefined }}
+                  >
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                    <polyline points="15 3 21 3 21 9"/>
+                    <line x1="10" y1="14" x2="21" y2="3"/>
+                  </svg>
+                </span>
+              )}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
@@ -101,6 +137,11 @@ export default function PdfReader() {
     if (!isTouch) return 'desktop';
     return window.innerWidth < 768 ? 'mobile' : 'tablet';
   })();
+
+  const [outline, setOutline] = useState([]);
+  const [showTocPanel, setShowTocPanel] = useState(false);
+  const [tocPanelWidth, setTocPanelWidth] = useState(284);
+  const [tocHovered, setTocHovered] = useState(false);
 
   // File management
   const [pdfPath, setPdfPath] = useState(null);
@@ -130,6 +171,7 @@ export default function PdfReader() {
   const containerRef = useRef(null);
   const userMenuRef = useRef(null);
   const filePanelRef = useRef(null);
+  const tocPanelRef = useRef(null);
   const fileInputRef = useRef(null);
   const observerRef = useRef(null);
   const activeSpanRef = useRef(null);
@@ -160,6 +202,43 @@ export default function PdfReader() {
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
   }, [showFilePanel]);
+
+  // Close ToC panel on outside click
+  useEffect(() => {
+    if (!showTocPanel) return;
+    const handleOutside = (e) => {
+      if (tocPanelRef.current && !tocPanelRef.current.contains(e.target)) {
+        setShowTocPanel(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [showTocPanel]);
+
+  // Resize ToC panel to fit the longest title
+  useEffect(() => {
+    if (!showTocPanel || outline.length === 0) return;
+    function calcWidth() {
+      const maxWidth = window.innerWidth - 56 - 10 - 8;
+      const flat = flattenOutline(outline);
+      const probe = document.createElement('span');
+      probe.style.cssText = 'position:absolute;left:-9999px;visibility:hidden;white-space:nowrap;font-size:12px';
+      document.body.appendChild(probe);
+      let maxTextW = 0;
+      for (const item of flat) {
+        probe.textContent = item.title;
+        const w = probe.getBoundingClientRect().width + item.level * 12;
+        if (w > maxTextW) maxTextW = w;
+      }
+      document.body.removeChild(probe);
+      // left-pad + text + gap + page-num(~24) + right-pad
+      const needed = Math.max(284, Math.ceil(14 + maxTextW + 8 + 24 + 14));
+      setTocPanelWidth(Math.min(needed, maxWidth));
+    }
+    calcWidth();
+    window.addEventListener('resize', calcWidth);
+    return () => window.removeEventListener('resize', calcWidth);
+  }, [showTocPanel, outline]);
 
   // Resize panel to fit the longest filename, up to the available viewport width
   useEffect(() => {
@@ -263,16 +342,25 @@ export default function PdfReader() {
   async function loadFile(filePath, fileId, scrollOffset = 0) {
     setPdfPath(filePath);
     setPages([]);
+    setOutline([]);
     setShowFilePanel(false);
+    setShowTocPanel(false);
     pendingScrollRef.current = scrollOffset;
     currentFileIdRef.current = fileId;
-    const { pages: p, sourceLang: sl } = await extractPdf(filePath);
+    const { pages: p, sourceLang: sl, outline: ol } = await extractPdf(filePath);
     setPages(p);
     setSourceLang(sl);
+    setOutline(ol);
     if (fileId) {
       fetch(`/api/files/${fileId}/open`, { method: 'PATCH' });
     }
   }
+
+  const scrollToPage = useCallback((pageNum) => {
+    const el = containerRef.current?.querySelector(`[data-pagenum="${pageNum}"]`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setShowTocPanel(false);
+  }, []);
 
   async function handleFileUpload(e) {
     const file = e.target.files?.[0];
@@ -461,6 +549,32 @@ export default function PdfReader() {
             <rect x="14" y="19" width="3" height="6"/>
           </svg>
         </button>
+        {/* Table of Contents */}
+        {outline.length > 0 && (
+          <button
+            onMouseEnter={() => setTocHovered(true)}
+            onMouseLeave={() => setTocHovered(false)}
+            onClick={() => setShowTocPanel(v => !v)}
+            style={{
+              background: showTocPanel ? colors.app.background : "none",
+              border: "none",
+              padding: "2px 0",
+              cursor: "pointer",
+              borderRadius: 6,
+            }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
+              stroke={tocHovered || showTocPanel ? colors.icon.hover : colors.icon.default}
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="8" y1="6" x2="21" y2="6"/>
+              <line x1="8" y1="12" x2="21" y2="12"/>
+              <line x1="8" y1="18" x2="21" y2="18"/>
+              <line x1="3" y1="6" x2="3.01" y2="6"/>
+              <line x1="3" y1="12" x2="3.01" y2="12"/>
+              <line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+          </button>
+        )}
         <div style={{
           background: colors.sidebar.langGroup,
           borderRadius: 6,
@@ -798,6 +912,68 @@ export default function PdfReader() {
       </div>
     )}
 
+    {/* ToC panel */}
+    {showTocPanel && outline.length > 0 && (
+      <div
+        ref={tocPanelRef}
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: "fixed",
+          left: 56,
+          top: 8,
+          width: tocPanelWidth,
+          background: colors.card.background,
+          border: `1px solid ${colors.card.border}`,
+          boxShadow: colors.card.shadow,
+          borderRadius: 8,
+          zIndex: 9999,
+          overflow: "hidden",
+        }}
+      >
+        <div style={{
+          padding: "10px 14px",
+          borderBottom: `1px solid ${colors.card.border}`,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>Contents</span>
+          <button
+            onClick={() => setShowTocPanel(false)}
+            style={{ background: "none", border: "none", cursor: "pointer", color: colors.card.close, fontSize: 18, lineHeight: 1, padding: 0 }}
+          >×</button>
+        </div>
+        <div style={{ maxHeight: "calc(100vh - 80px)", overflowY: "auto" }}>
+          {flattenOutline(outline).map((item, i) => (
+            <button
+              key={i}
+              className="toc-row"
+              onClick={() => item.pageNum && scrollToPage(item.pageNum)}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "baseline",
+                gap: 8,
+                padding: `5px 14px 5px ${14 + item.level * 12}px`,
+                background: "none",
+                border: "none",
+                cursor: item.pageNum ? "pointer" : "default",
+                textAlign: "left",
+                fontSize: item.level === 0 ? 13 : 12,
+                fontWeight: item.level === 0 ? 600 : 400,
+              }}
+            >
+              <span className="toc-row-title">{item.title}</span>
+              {item.pageNum != null && (
+                <span className="toc-row-page">{item.pageNum}</span>
+              )}
+            </button>
+          ))}
+          <div style={{ height: 8 }} />
+        </div>
+      </div>
+    )}
+
     {/* Main scroll area */}
     <div
       ref={containerRef}
@@ -902,6 +1078,7 @@ export default function PdfReader() {
                 page={page}
                 isVisible={visiblePages.has(page.pageNum)}
                 onWordClick={onWordClick}
+                onLinkClick={scrollToPage}
               />
             </div>
           </div>

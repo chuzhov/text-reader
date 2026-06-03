@@ -28,7 +28,7 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 
 1. `components/PdfReader.jsx` mounts and fetches `GET /api/files`; if the user has files, calls `extractPdf("/api/files/{id}/content")` for the most recently opened one and restores its saved scroll position
 2. `utils/pdf_processor.js` uses pdfjs-dist to extract text items with transform matrix positions; also reads `dc:language` from PDF metadata (falls back to `"en"`). The worker is served from `/pdf.worker.min.js` (copied from `node_modules/pdfjs-dist/build/pdf.worker.min.js` to `public/` by the webpack build hook in `next.config.mjs` — no CDN dependency)
-3. `extractPdf` returns `{ pages, sourceLang }` — `sourceLang` is the BCP-47 primary tag (e.g. `"en"`)
+3. `extractPdf` returns `{ pages, sourceLang, outline }` — `sourceLang` is the BCP-47 primary tag (e.g. `"en"`); `outline` is the resolved PDF bookmark tree (empty array if none)
 4. Extracted words with absolute `{ x, y }` coordinates are rendered as `position: absolute` spans inside per-page containers
 5. On click, `translateWord(word, sourceLang)` POSTs to `/api/translate`, which proxies to the free MyMemory API (`api.mymemory.translated.net`) with `langpair=sourceLang|ru` — no API key, falls back to original text on error
 
@@ -39,9 +39,11 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - `detectColumns(lines)` — splits lines into left/right columns by comparing each line's avg `transform[4]` (X) to the median X across all items; returns left column first
 - `buildWords(line, pageHeight)` — reconstructs words by sorting items by X and merging items whose gap ≤ `max(2, avgCharWidth * 0.7)`; larger gaps emit a new word. Tracks `wordStartX/Y` from the **first** item in each word (not the last). Y is flipped: `cssY = pageHeight - pdfY` because PDF Y=0 is at the bottom but CSS `top` counts from the top.
 - Before processing, duplicate text items at the same integer-rounded position are filtered out (some PDFs embed the same text twice at identical coordinates).
+- `extractOutline(pdf)` — reads `pdf.getOutline()` and recursively resolves each entry's `dest` (named string or raw array) via `pdf.getDestination` + `pdf.getPageIndex` to produce `{ title, pageNum, level, items[] }`. Returns `[]` if the PDF has no outline.
+- After `buildWords`, each page's annotations are fetched via `page.getAnnotations()`; `Link`-type annotations with a resolvable `dest` tag matching words by coordinate overlap (`pdfY = pageHeight - word.y` vs `ann.rect [llx, lly, urx, ury]`). Tagged words get `linkPageNum: targetPage`; the rightmost word in each link group gets `isLinkEnd: true` (one icon per link).
 
 **State** (all local in `PdfReader`):
-- `pages` — `[{ pageNum, width, height, words: [{ text, x, y }] }]`, set once per file load
+- `pages` — `[{ pageNum, width, height, words: [{ text, x, y, fontSize?, linkPageNum?, isLinkEnd? }] }]`, set once per file load; `linkPageNum` and `isLinkEnd` are present only on words that fall inside a PDF link annotation
 - `sourceLang` — BCP-47 primary tag read from PDF metadata on load (e.g. `"en"`), passed to every translation call
 - `targetLang` — translation target language code (currently hardcoded `"ru"`); drives the target-lang button label in the sidebar
 - `card` — `{ word, translation, cefrLevel, x, top, bottom }` or `null`; exactly one of `top`/`bottom` is a number, the other is `null` (CSS `bottom` used when card flips above the word to avoid height-estimation gap); `translation` is `null` while the API call is in flight (shows "Translating…"); `cefrLevel` is `null` for multi-word selections
@@ -56,6 +58,10 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - `panelWidth` — dynamic width of the file picker panel; calculated on open by measuring each filename with a hidden probe `<span>` at `font-size:12px`; bounded by `window.innerWidth - 56 - 10 - 8` (sidebar + scrollbar + gap)
 - `deviceType` — not state, computed inline on render via `window.matchMedia('(pointer: coarse)')` + `window.innerWidth`; values: `"desktop"` / `"tablet"` / `"mobile"`; used in the file panel to show a matching device icon (monitor / tablet / phone) next to the currently open file; inactive files show a document/page icon
 - `fileUrl` / `fileUrlError` / `uploadLoading` — URL input value, last upload error, and in-flight flag for the file panel
+- `outline` — resolved PDF bookmark tree (`{ title, pageNum, level, items[] }[]`); empty array if the PDF has no outline; set alongside `pages` on file load
+- `showTocPanel` — whether the Table of Contents side panel is open
+- `tocPanelWidth` — calculated width of the ToC panel (same probe-span technique as `panelWidth`); computed when the panel opens
+- `tocHovered` — `true` while the mouse is inside the ToC panel; used to keep the panel visible
 
 **Translation card placement** (`computeCardPos(anchorRect, xAnchor)` helper):
 - Horizontal: `x = clamp(e.clientX, 64, window.innerWidth - 280 - 8)`; uses the actual click X (`e.clientX`) for single-word clicks so the card is close to the clicked word, not the span's left edge
@@ -68,6 +74,17 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - Both buttons show a 16px spinner (`pdf-spinner` class) while the save is in flight, then switch to the highlighted icon on success
 - Speaker button (word → speaker → CEFR badge order) — uses `SpeechSynthesis` API with `utter.lang = sourceLang`; single-word only; calls `speechSynthesis.cancel()` before speaking to interrupt any ongoing speech
 - Trailing punctuation (`.,;:!?"'…`) is stripped from the extracted word before translation, CEFR lookup, vocab check, and pronunciation
+
+**Link annotations on PDF pages:**
+- Words with `linkPageNum` are rendered in `colors.word.linkColor` with `textDecoration: underline`
+- The rightmost word in each link group (`isLinkEnd: true`) renders a small inline SVG icon (external-link style) after the text; clicking the icon calls `onLinkClick(linkPageNum)` which scrolls to that page; clicking the word text still opens the translation card
+- Icon direction: if `linkPageNum > page.pageNum` (forward/down) the SVG is rendered with `transform: scaleY(-1)` (arrow pointing down); otherwise the default arrow points up
+
+**Table of Contents panel:**
+- Shown only when `outline.length > 0`; toggled by a list-icon button in the sidebar
+- `flattenOutline(items)` recursively flattens the tree to a list with `level` preserved for indentation (`paddingLeft: 8 + level * 12`)
+- Each row is a `button.toc-row` (CSS in `globals.css`) showing the title (truncated) and page number; clicking scrolls to that page via `scrollToPage`
+- `scrollToPage` is `useCallback`-memoized; passed as `onLinkClick` to `PageView`
 
 **Virtualization:**
 - `PageView` is wrapped in `React.memo` — it only re-renders when `isVisible` flips
@@ -83,7 +100,7 @@ All colors live in `utils/theme.js` as a single `colors` object, **namespaced by
 colors.app.*       // top-level shell
 colors.sidebar.*   // fixed left sidebar (background, langGroup pill)
 colors.page.*      // per-page container
-colors.word.*      // word spans
+colors.word.*      // word spans — includes linkColor for PDF link annotations
 colors.icon.*      // shared icon tints — default and hover
 colors.cefr.*      // CEFR level badge colors keyed by level (A1–C2)
 colors.card.*      // translation card

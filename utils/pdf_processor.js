@@ -103,6 +103,34 @@ function buildWords(line, pageHeight) {
   return words;
 }
 
+async function extractOutline(pdf) {
+  const raw = await pdf.getOutline().catch(() => null);
+  if (!raw || raw.length === 0) return [];
+
+  async function resolve(items, level) {
+    const result = [];
+    for (const item of items) {
+      let pageNum = null;
+      try {
+        let dest = item.dest;
+        if (typeof dest === 'string') dest = await pdf.getDestination(dest);
+        if (Array.isArray(dest) && dest[0]) {
+          pageNum = (await pdf.getPageIndex(dest[0])) + 1;
+        }
+      } catch {}
+      result.push({
+        title: item.title,
+        pageNum,
+        level,
+        items: item.items?.length ? await resolve(item.items, level + 1) : [],
+      });
+    }
+    return result;
+  }
+
+  return resolve(raw, 0);
+}
+
 /**
  * MAIN EXTRACTION PIPELINE
  */
@@ -140,6 +168,37 @@ export async function extractPdf(pdfUrl) {
 
     const words = lines.flatMap(line => buildWords(line, pageHeight));
 
+    // Tag words that fall inside a PDF link annotation pointing to another page
+    const annotations = await page.getAnnotations();
+    const linkGroups = new Map();
+    for (const ann of annotations) {
+      if (ann.subtype !== 'Link') continue;
+      const rawDest = ann.dest ?? ann.action?.dest;
+      if (!rawDest) continue;
+      let dest = rawDest;
+      if (typeof dest === 'string') {
+        try { dest = await pdf.getDestination(dest); } catch { continue; }
+      }
+      if (!Array.isArray(dest) || !dest[0]) continue;
+      let targetPage;
+      try { targetPage = (await pdf.getPageIndex(dest[0])) + 1; } catch { continue; }
+      const [llx, lly, urx, ury] = ann.rect;
+      const groupKey = `${targetPage}-${Math.round(lly)}-${Math.round(ury)}`;
+      for (const word of words) {
+        // word.y is CSS (top-down); convert back to PDF Y for comparison
+        const pdfY = pageHeight - word.y;
+        if (word.x >= llx - 2 && word.x <= urx + 2 && pdfY >= lly - 2 && pdfY <= ury + 2) {
+          word.linkPageNum = targetPage;
+          if (!linkGroups.has(groupKey)) linkGroups.set(groupKey, []);
+          linkGroups.get(groupKey).push(word);
+        }
+      }
+    }
+    // Mark only the rightmost word in each link group — that's where the icon goes
+    for (const groupWords of linkGroups.values()) {
+      groupWords.reduce((a, b) => (a.x > b.x ? a : b)).isLinkEnd = true;
+    }
+
     pages.push({
       pageNum,
       width: pageWidth,
@@ -148,5 +207,6 @@ export async function extractPdf(pdfUrl) {
     });
   }
 
-  return { pages, sourceLang };
+  const outline = await extractOutline(pdf);
+  return { pages, sourceLang, outline };
 }

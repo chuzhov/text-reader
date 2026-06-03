@@ -13,6 +13,8 @@ export const colors = {
   word: {
     background: "transparent",
     activeBackground: "rgba(0, 0, 0, 0.07)",
+    linkColor: "#1a56db",
+    linkIconColor: "#1a56db",
   },
   icon: {
     default: "#9CA3AF",
