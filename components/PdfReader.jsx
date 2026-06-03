@@ -104,7 +104,7 @@ const PageView = React.memo(function PageView({ page, isVisible, onWordClick, on
                   <svg
                     width="10" height="10" viewBox="0 0 24 24" fill="none"
                     stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
-                    style={{ transform: w.linkPageNum > page.pageNum ? 'scaleY(-1)' : undefined }}
+                    style={{ transform: w.linkPageNum > page.pageNum ? 'scaleY(-1)' : 'scaleX(-1)' }}
                   >
                     <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
                     <polyline points="15 3 21 3 21 9"/>
