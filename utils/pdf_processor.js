@@ -170,7 +170,6 @@ export async function extractPdf(pdfUrl) {
 
     // Tag words that fall inside a PDF link annotation pointing to another page
     const annotations = await page.getAnnotations();
-    const linkGroups = new Map();
     for (const ann of annotations) {
       if (ann.subtype !== 'Link') continue;
       const rawDest = ann.dest ?? ann.action?.dest;
@@ -183,20 +182,26 @@ export async function extractPdf(pdfUrl) {
       let targetPage;
       try { targetPage = (await pdf.getPageIndex(dest[0])) + 1; } catch { continue; }
       const [llx, lly, urx, ury] = ann.rect;
-      const groupKey = `${targetPage}-${Math.round(lly)}-${Math.round(ury)}`;
       for (const word of words) {
-        // word.y is CSS (top-down); convert back to PDF Y for comparison
         const pdfY = pageHeight - word.y;
         if (word.x >= llx - 2 && word.x <= urx + 2 && pdfY >= lly - 2 && pdfY <= ury + 2) {
           word.linkPageNum = targetPage;
-          if (!linkGroups.has(groupKey)) linkGroups.set(groupKey, []);
-          linkGroups.get(groupKey).push(word);
         }
       }
     }
-    // Mark only the rightmost word in each link group — that's where the icon goes
-    for (const groupWords of linkGroups.values()) {
-      groupWords.reduce((a, b) => (a.x > b.x ? a : b)).isLinkEnd = true;
+    // Mark the first word of each consecutive run of same-destination links.
+    // Sort by reading order (top→bottom, left→right) because PDF content stream
+    // order doesn't match visual order — subtitle may appear before title in stream.
+    const byReadingOrder = [...words].sort((a, b) =>
+      a.y !== b.y ? a.y - b.y : a.x - b.x
+    );
+    for (let i = 0; i < byReadingOrder.length; i++) {
+      const w = byReadingOrder[i];
+      if (w.linkPageNum == null) continue;
+      const prev = byReadingOrder[i - 1];
+      if (!prev || prev.linkPageNum !== w.linkPageNum) {
+        w.isLinkIcon = true;
+      }
     }
 
     pages.push({

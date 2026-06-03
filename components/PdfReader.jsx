@@ -87,7 +87,7 @@ const PageView = React.memo(function PageView({ page, isVisible, onWordClick, on
               }}
             >
               {w.text}
-              {w.isLinkEnd && (
+              {w.isLinkIcon && (
                 <span
                   onClick={(e) => { e.stopPropagation(); onLinkClick(w.linkPageNum); }}
                   title={`Go to page ${w.linkPageNum}`}
