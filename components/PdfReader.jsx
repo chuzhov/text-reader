@@ -593,60 +593,6 @@ export default function PdfReader() {
             </svg>
           </button>
         )}
-        <div style={{
-          background: colors.sidebar.langGroup,
-          borderRadius: 6,
-          padding: 4,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 4,
-        }}>
-          <button
-            onMouseEnter={() => setSourceLangHovered(true)}
-            onMouseLeave={() => setSourceLangHovered(false)}
-            style={{
-              width: 30,
-              height: 30,
-              background: colors.sidebar.background,
-              border: `1px solid ${colors.icon.default}`,
-              borderRadius: 4,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 0,
-              color: sourceLangHovered ? colors.icon.hover : colors.icon.default,
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: 0.5,
-            }}
-          >
-            {sourceLang[0].toUpperCase() + sourceLang.slice(1)}
-          </button>
-          <button
-            onMouseEnter={() => setTargetLangHovered(true)}
-            onMouseLeave={() => setTargetLangHovered(false)}
-            style={{
-              width: 30,
-              height: 30,
-              background: colors.sidebar.background,
-              border: `1px solid ${colors.icon.default}`,
-              borderRadius: 4,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 0,
-              color: targetLangHovered ? colors.icon.hover : colors.icon.default,
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: 0.5,
-            }}
-          >
-            {targetLang[0].toUpperCase() + targetLang.slice(1)}
-          </button>
-        </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, paddingBottom: 8 }}>
         <button
@@ -730,6 +676,80 @@ export default function PdfReader() {
               </button>
             </div>
           )}
+        </div>
+      </div>
+    </div>
+
+    {/* Right sidebar */}
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 48,
+        background: colors.sidebar.background,
+        zIndex: 10,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "flex-start",
+      }}
+    >
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, marginTop: 8 }}>
+        <div style={{
+          background: colors.sidebar.langGroup,
+          borderRadius: 6,
+          padding: 4,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 4,
+        }}>
+          <button
+            onMouseEnter={() => setSourceLangHovered(true)}
+            onMouseLeave={() => setSourceLangHovered(false)}
+            style={{
+              width: 30,
+              height: 30,
+              background: colors.sidebar.background,
+              border: `1px solid ${colors.icon.default}`,
+              borderRadius: 4,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              color: sourceLangHovered ? colors.icon.hover : colors.icon.default,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: 0.5,
+            }}
+          >
+            {sourceLang[0].toUpperCase() + sourceLang.slice(1)}
+          </button>
+          <button
+            onMouseEnter={() => setTargetLangHovered(true)}
+            onMouseLeave={() => setTargetLangHovered(false)}
+            style={{
+              width: 30,
+              height: 30,
+              background: colors.sidebar.background,
+              border: `1px solid ${colors.icon.default}`,
+              borderRadius: 4,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+              color: targetLangHovered ? colors.icon.hover : colors.icon.default,
+              fontSize: 11,
+              fontWeight: 600,
+              letterSpacing: 0.5,
+            }}
+          >
+            {targetLang[0].toUpperCase() + targetLang.slice(1)}
+          </button>
         </div>
       </div>
     </div>
