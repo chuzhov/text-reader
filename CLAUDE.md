@@ -32,6 +32,8 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 4. Extracted words with absolute `{ x, y }` coordinates are rendered as `position: absolute` spans inside per-page containers
 5. On click, `translateWord(word, sourceLang)` POSTs to `/api/translate`, which proxies to the free MyMemory API (`api.mymemory.translated.net`) with `langpair=sourceLang|ru` — no API key, falls back to original text on error
 
+**Layout:** Two fixed 48px sidebars flank the main scroll area. Left sidebar (`left: 0`) holds reading operations (bookshelf, ToC, settings, user menu). Right sidebar (`right: 0`) holds translation options (source/target language pill). Main scroll area uses `left: 48, right: 48`. Both sidebars share `colors.sidebar.*`; use CSS classes `sb-left` / `sb-right` only when their styles diverge.
+
 **File storage:** Uploaded files are saved to `uploads/` at the project root (outside `public/`) and served via the authenticated `GET /api/files/[id]/content` route. Files must **not** be stored in `public/` — Next.js production only serves static files that existed at build time; dynamically-added files in `public/` return 404. The `uploads/` directory is in `.gitignore`.
 
 **PDF extraction pipeline** (`utils/pdf_processor.js`):
@@ -56,16 +58,16 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - `userFiles` — array of the user's `UserFile` records from the API, sorted by most recently opened
 - `filesLoaded` — `false` until the initial `/api/files` fetch completes; gates the empty state render
 - `showFilePanel` — whether the file picker panel is open
-- `panelWidth` — dynamic width of the file picker panel; calculated on open by measuring each filename with a hidden probe `<span>` at `font-size:12px`; bounded by `window.innerWidth - 56 - 10 - 8` (left sidebar + scrollbar + gap)
+- `panelWidth` — dynamic width of the file picker panel; calculated on open by measuring each filename with a hidden probe `<span>` at `font-size:12px`; bounded by `window.innerWidth - 56 - 48 - 10 - 8` (left sidebar 48 + gap 8, right sidebar 48, scrollbar 10, gap 8)
 - `deviceType` — not state, computed inline on render via `window.matchMedia('(pointer: coarse)')` + `window.innerWidth`; values: `"desktop"` / `"tablet"` / `"mobile"`; used in the file panel to show a matching device icon (monitor / tablet / phone) next to the currently open file; inactive files show a document/page icon
 - `fileUrl` / `fileUrlError` / `uploadLoading` — URL input value, last upload error, and in-flight flag for the file panel
 - `outline` — resolved PDF bookmark tree (`{ title, pageNum, level, items[] }[]`); empty array if the PDF has no outline; set alongside `pages` on file load
 - `showTocPanel` — whether the Table of Contents side panel is open
-- `tocPanelWidth` — calculated width of the ToC panel (same probe-span technique as `panelWidth`); computed when the panel opens
+- `tocPanelWidth` — calculated width of the ToC panel (same probe-span technique and same `window.innerWidth - 56 - 48 - 10 - 8` bound as `panelWidth`); computed when the panel opens
 - `tocHovered` — `true` while the mouse is inside the ToC panel; used to keep the panel visible
 
 **Translation card placement** (`computeCardPos(anchorRect, xAnchor)` helper):
-- Horizontal: `x = clamp(e.clientX, 64, window.innerWidth - 280 - 8)`; uses the actual click X (`e.clientX`) for single-word clicks so the card is close to the clicked word, not the span's left edge
+- Horizontal: `x = clamp(e.clientX, 64, window.innerWidth - 280 - 48 - 8)`; the `64` left-clamp guards the left sidebar; the `48` right-offset guards the right sidebar; uses the actual click X (`e.clientX`) for single-word clicks so the card is close to the clicked word, not the span's left edge
 - Vertical: if space below `anchorRect.bottom` ≥ 220px → `{ top: anchorRect.bottom + 8, bottom: null }`; otherwise flips above → `{ top: null, bottom: window.innerHeight - anchorRect.top + 8 }`. Using CSS `bottom` (not estimated `top`) pins the card's bottom edge 8px above the word regardless of actual card height
 - Card JSX uses `top: card.top ?? 'auto', bottom: card.bottom ?? 'auto'`; `maxHeight: window.innerHeight - 32` + `overflowY: auto` for small viewports
 
