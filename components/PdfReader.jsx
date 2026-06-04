@@ -459,7 +459,6 @@ export default function PdfReader() {
     setWordStatus(null);
     setStarSaving(false);
     setBookSaving(false);
-    setCloseHovered(false);
     setBookHovered(false);
     setStarHovered(false);
     setSpeakerHovered(false);
