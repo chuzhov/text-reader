@@ -45,7 +45,7 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 **State** (all local in `PdfReader`):
 - `pages` — `[{ pageNum, width, height, words: [{ text, x, y, fontSize?, linkPageNum?, isLinkEnd? }] }]`, set once per file load; `linkPageNum` and `isLinkEnd` are present only on words that fall inside a PDF link annotation
 - `sourceLang` — BCP-47 primary tag read from PDF metadata on load (e.g. `"en"`), passed to every translation call
-- `targetLang` — translation target language code (currently hardcoded `"ru"`); drives the target-lang button label in the sidebar
+- `targetLang` — translation target language code (currently hardcoded `"ru"`); drives the target-lang button label in the right sidebar
 - `card` — `{ word, translation, cefrLevel, x, top, bottom }` or `null`; exactly one of `top`/`bottom` is a number, the other is `null` (CSS `bottom` used when card flips above the word to avoid height-estimation gap); `translation` is `null` while the API call is in flight (shows "Translating…"); `cefrLevel` is `null` for multi-word selections
 - `loadingPos` — `{ x, y }` or `null`; position of the loading spinner while translation is in flight; decoupled from `card`'s `top`/`bottom` (always uses `anchorRect.bottom + 8` as `y`)
 - `wordStatus` — `{ inVocab, isActive }` or `null`; fetched in parallel with translation via `GET /api/vocabulary/check` for single-word clicks only; `null` for multi-word selections and while loading
@@ -56,7 +56,7 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - `userFiles` — array of the user's `UserFile` records from the API, sorted by most recently opened
 - `filesLoaded` — `false` until the initial `/api/files` fetch completes; gates the empty state render
 - `showFilePanel` — whether the file picker panel is open
-- `panelWidth` — dynamic width of the file picker panel; calculated on open by measuring each filename with a hidden probe `<span>` at `font-size:12px`; bounded by `window.innerWidth - 56 - 10 - 8` (sidebar + scrollbar + gap)
+- `panelWidth` — dynamic width of the file picker panel; calculated on open by measuring each filename with a hidden probe `<span>` at `font-size:12px`; bounded by `window.innerWidth - 56 - 10 - 8` (left sidebar + scrollbar + gap)
 - `deviceType` — not state, computed inline on render via `window.matchMedia('(pointer: coarse)')` + `window.innerWidth`; values: `"desktop"` / `"tablet"` / `"mobile"`; used in the file panel to show a matching device icon (monitor / tablet / phone) next to the currently open file; inactive files show a document/page icon
 - `fileUrl` / `fileUrlError` / `uploadLoading` — URL input value, last upload error, and in-flight flag for the file panel
 - `outline` — resolved PDF bookmark tree (`{ title, pageNum, level, items[] }[]`); empty array if the PDF has no outline; set alongside `pages` on file load
@@ -82,7 +82,7 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - Icon direction: if `linkPageNum > page.pageNum` (forward/down) the SVG is rendered with `transform: scaleY(-1)` (arrow pointing down); otherwise `transform: scaleX(-1)` (arrow pointing up-left, mirrored horizontally)
 
 **Table of Contents panel:**
-- Shown only when `outline.length > 0`; toggled by a list-icon button in the sidebar; the sidebar icon uses `transform: scaleX(-1)` so the short dots (page-number markers) appear on the right, matching real ToC conventions
+- Shown only when `outline.length > 0`; toggled by a list-icon button in the left sidebar; the left sidebar icon uses `transform: scaleX(-1)` so the short dots (page-number markers) appear on the right, matching real ToC conventions
 - `flattenOutline(items)` recursively flattens the tree to a list with `level` preserved for indentation (`paddingLeft: 8 + level * 12`)
 - Each row is a `button.toc-row` (CSS in `globals.css`) showing the title (truncated) and page number; clicking scrolls to that page via `scrollToPage`
 - `scrollToPage` is `useCallback`-memoized; passed as `onLinkClick` to `PageView`
@@ -100,7 +100,7 @@ All colors live in `utils/theme.js` as a single `colors` object, **namespaced by
 
 ```js
 colors.app.*       // top-level shell
-colors.sidebar.*   // fixed left sidebar (background, langGroup pill)
+colors.sidebar.*   // shared sidebar settings — both sidebars (background, langGroup pill)
 colors.page.*      // per-page container
 colors.word.*      // word spans — includes linkColor for PDF link annotations
 colors.icon.*      // shared icon tints — default and hover

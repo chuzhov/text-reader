@@ -520,7 +520,7 @@ export default function PdfReader() {
 
   return (
     <>
-    {/* Sidebar */}
+    {/* Left sidebar */}
     <div
       style={{
         position: "fixed",
