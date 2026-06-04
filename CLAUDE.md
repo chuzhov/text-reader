@@ -51,6 +51,7 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - `wordStatus` — `{ inVocab, isActive }` or `null`; fetched in parallel with translation via `GET /api/vocabulary/check` for single-word clicks only; `null` for multi-word selections and while loading
 - `starSaving` / `bookSaving` — `true` while the respective vocabulary save API call is in flight; shows a 16px spinner inside the button
 - `visiblePages` — `Set<number>` of page numbers currently in (or near) the viewport, maintained by `IntersectionObserver`
+- `currentPage` — `number | null`; the page whose top edge is at or above the scroll container top (i.e. the page the user is reading); updated on every scroll event via `computeCurrentPage` which queries `[data-pagenum]` elements directly — kept separate from `visiblePages` because that Set has a 300px rootMargin bias and is only reliable for virtualization, not reading-position tracking
 - `pdfPath` — current `/api/files/{id}/content` URL being rendered, or `null` if no file is open
 - `userFiles` — array of the user's `UserFile` records from the API, sorted by most recently opened
 - `filesLoaded` — `false` until the initial `/api/files` fetch completes; gates the empty state render
@@ -78,13 +79,14 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 **Link annotations on PDF pages:**
 - Words with `linkPageNum` are rendered in `colors.word.linkColor` with `textDecoration: underline`
 - The rightmost word in each link group (`isLinkEnd: true`) renders a small inline SVG icon (external-link style) after the text; clicking the icon calls `onLinkClick(linkPageNum)` which scrolls to that page; clicking the word text still opens the translation card
-- Icon direction: if `linkPageNum > page.pageNum` (forward/down) the SVG is rendered with `transform: scaleY(-1)` (arrow pointing down); otherwise the default arrow points up
+- Icon direction: if `linkPageNum > page.pageNum` (forward/down) the SVG is rendered with `transform: scaleY(-1)` (arrow pointing down); otherwise `transform: scaleX(-1)` (arrow pointing up-left, mirrored horizontally)
 
 **Table of Contents panel:**
-- Shown only when `outline.length > 0`; toggled by a list-icon button in the sidebar
+- Shown only when `outline.length > 0`; toggled by a list-icon button in the sidebar; the sidebar icon uses `transform: scaleX(-1)` so the short dots (page-number markers) appear on the right, matching real ToC conventions
 - `flattenOutline(items)` recursively flattens the tree to a list with `level` preserved for indentation (`paddingLeft: 8 + level * 12`)
 - Each row is a `button.toc-row` (CSS in `globals.css`) showing the title (truncated) and page number; clicking scrolls to that page via `scrollToPage`
 - `scrollToPage` is `useCallback`-memoized; passed as `onLinkClick` to `PageView`
+- Active rows: at render time `activePage` is computed as the highest `pageNum ≤ currentPage` among all flattened items; every item whose `pageNum === activePage` receives the `toc-row-active` class, which applies an orange left accent (`box-shadow: inset 3px 0 0 #F97316`) without affecting layout. Multiple items can be active simultaneously when a PDF page contains several outline entries.
 
 **Virtualization:**
 - `PageView` is wrapped in `React.memo` — it only re-renders when `isVisible` flips

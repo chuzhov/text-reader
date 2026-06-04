@@ -18,13 +18,18 @@
 .book-row:hover .book-row-trash, .book-row:focus-within .book-row-trash { display: flex; align-items: center; }
 .book-row-trash:hover { color: #F97316; }
 
-/* ToC panel row hover */
-.toc-row { color: #374151; }
+/* ToC panel row hover + active */
+.toc-row { color: #374151; background: none; }
 .toc-row:hover { background: var(--menu-item-hover-bg); }
+.toc-row-active { box-shadow: inset 3px 0 0 #F97316; }
 .toc-row-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toc-row:hover .toc-row-title { color: #F97316; }
 .toc-row-page { font-size: 11px; color: #9CA3AF; flex-shrink: 0; }
 .toc-row:hover .toc-row-page { color: #F97316; }
+
+/* Panel close button (×) — shared across all menus */
+.panel-close { color: #aaa; border-radius: 4px; background: none; border: none; cursor: pointer; font-size: 18px; line-height: 1; padding: 0; }
+.panel-close:hover { color: #F97316; }
 
 @keyframes pdf-spin {
   to { transform: rotate(360deg); }

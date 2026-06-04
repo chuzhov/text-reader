@@ -129,6 +129,7 @@ export default function PdfReader() {
   const [card, setCard] = useState(null);
   const [loadingPos, setLoadingPos] = useState(null);
   const [visiblePages, setVisiblePages] = useState(new Set());
+  const [currentPage, setCurrentPage] = useState(null);
   const [targetLang] = useState("ru");
 
   const deviceType = (() => {
@@ -159,7 +160,6 @@ export default function PdfReader() {
   // Hover states
   const [bookshelfHovered, setBookshelfHovered] = useState(false);
   const [starHovered, setStarHovered] = useState(false);
-  const [closeHovered, setCloseHovered] = useState(false);
   const [bookHovered, setBookHovered] = useState(false);
   const [sourceLangHovered, setSourceLangHovered] = useState(false);
   const [targetLangHovered, setTargetLangHovered] = useState(false);
@@ -284,13 +284,29 @@ export default function PdfReader() {
       .catch(() => setFilesLoaded(true));
   }, []);
 
+  const computeCurrentPage = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const containerTop = container.getBoundingClientRect().top;
+    let page = null;
+    for (const el of container.querySelectorAll('[data-pagenum]')) {
+      if (el.getBoundingClientRect().top <= containerTop) page = parseInt(el.dataset.pagenum);
+    }
+    setCurrentPage(prev => {
+      const next = page ?? (container.querySelector('[data-pagenum]') ? parseInt(container.querySelector('[data-pagenum]').dataset.pagenum) : null);
+      return prev === next ? prev : next;
+    });
+  }, []);
+
   // Restore scroll position after pages render
   useEffect(() => {
     if (pages.length > 0 && pendingScrollRef.current !== null) {
       containerRef.current?.scrollTo({ top: pendingScrollRef.current });
       pendingScrollRef.current = null;
     }
-  }, [pages]);
+    if (pages.length > 0) setTimeout(computeCurrentPage, 100);
+    if (pages.length === 0) setCurrentPage(null);
+  }, [pages, computeCurrentPage]);
 
   // Single IntersectionObserver for all pages
   useEffect(() => {
@@ -421,6 +437,7 @@ export default function PdfReader() {
   // Debounced scroll offset save — fires 1 s after last scroll event
   const handleScroll = useCallback(() => {
     if (!currentFileIdRef.current) return;
+    computeCurrentPage();
     clearTimeout(scrollSaveTimerRef.current);
     scrollSaveTimerRef.current = setTimeout(() => {
       const scrollTop = containerRef.current?.scrollTop ?? 0;
@@ -565,7 +582,8 @@ export default function PdfReader() {
           >
             <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none"
               stroke={tocHovered || showTocPanel ? colors.icon.hover : colors.icon.default}
-              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              style={{ transform: 'scaleX(-1)' }}>
               <line x1="8" y1="6" x2="21" y2="6"/>
               <line x1="8" y1="12" x2="21" y2="12"/>
               <line x1="8" y1="18" x2="21" y2="18"/>
@@ -742,10 +760,7 @@ export default function PdfReader() {
           alignItems: "center",
         }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>Open PDF</span>
-          <button
-            onClick={() => setShowFilePanel(false)}
-            style={{ background: "none", border: "none", cursor: "pointer", color: colors.card.close, fontSize: 18, lineHeight: 1, padding: 0 }}
-          >×</button>
+          <button className="panel-close" onClick={() => setShowFilePanel(false)}>×</button>
         </div>
 
         <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -938,16 +953,21 @@ export default function PdfReader() {
           alignItems: "center",
         }}>
           <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>Contents</span>
-          <button
-            onClick={() => setShowTocPanel(false)}
-            style={{ background: "none", border: "none", cursor: "pointer", color: colors.card.close, fontSize: 18, lineHeight: 1, padding: 0 }}
-          >×</button>
+          <button className="panel-close" onClick={() => setShowTocPanel(false)}>×</button>
         </div>
         <div style={{ maxHeight: "calc(100vh - 80px)", overflowY: "auto" }}>
-          {flattenOutline(outline).map((item, i) => (
+          {(() => {
+            const flat = flattenOutline(outline);
+            let activePage = null;
+            if (currentPage != null) {
+              for (const item of flat) {
+                if (item.pageNum != null && item.pageNum <= currentPage) activePage = item.pageNum;
+              }
+            }
+            return flat.map((item, i) => (
             <button
               key={i}
-              className="toc-row"
+              className={`toc-row${item.pageNum != null && item.pageNum === activePage ? ' toc-row-active' : ''}`}
               onClick={() => item.pageNum && scrollToPage(item.pageNum)}
               style={{
                 width: "100%",
@@ -955,7 +975,6 @@ export default function PdfReader() {
                 alignItems: "baseline",
                 gap: 8,
                 padding: `5px 14px 5px ${14 + item.level * 12}px`,
-                background: "none",
                 border: "none",
                 cursor: item.pageNum ? "pointer" : "default",
                 textAlign: "left",
@@ -968,7 +987,8 @@ export default function PdfReader() {
                 <span className="toc-row-page">{item.pageNum}</span>
               )}
             </button>
-          ))}
+          ));
+          })()}
           <div style={{ height: 8 }} />
         </div>
       </div>
@@ -1157,22 +1177,7 @@ export default function PdfReader() {
                 </span>
               )}
             </div>
-            <button
-              onClick={closeCard}
-              onMouseEnter={() => setCloseHovered(true)}
-              onMouseLeave={() => setCloseHovered(false)}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                color: closeHovered ? colors.icon.hover : colors.card.close,
-                fontSize: 18,
-                lineHeight: 1,
-                padding: 0,
-              }}
-            >
-              ×
-            </button>
+            <button className="panel-close" onClick={closeCard}>×</button>
           </div>
           <div style={{ fontSize: 14, color: colors.card.translation }}>
             {card.translation}
