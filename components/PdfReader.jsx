@@ -50,7 +50,7 @@ function flattenOutline(items) {
 function computeCardPos(anchorRect, xAnchor) {
   const CARD_W = 280;
   const CARD_H = 220;
-  const x = Math.max(64, Math.min(window.innerWidth - CARD_W - 8, xAnchor ?? anchorRect.left));
+  const x = Math.max(64, Math.min(window.innerWidth - CARD_W - 48 - 8, xAnchor ?? anchorRect.left));
   const spaceBelow = window.innerHeight - anchorRect.bottom - 8;
   if (spaceBelow >= CARD_H) {
     return { x, top: anchorRect.bottom + 8, bottom: null };
@@ -219,7 +219,7 @@ export default function PdfReader() {
   useEffect(() => {
     if (!showTocPanel || outline.length === 0) return;
     function calcWidth() {
-      const maxWidth = window.innerWidth - 56 - 10 - 8;
+      const maxWidth = window.innerWidth - 56 - 48 - 10 - 8;
       const flat = flattenOutline(outline);
       const probe = document.createElement('span');
       probe.style.cssText = 'position:absolute;left:-9999px;visibility:hidden;white-space:nowrap;font-size:12px';
@@ -245,8 +245,8 @@ export default function PdfReader() {
     if (!showFilePanel) return;
     function calcWidth() {
       // scrollbar = 10px (matches .pdf-scroll-container::-webkit-scrollbar width)
-      // left edge of panel = 56px (sidebar 48 + gap 8), right gap = 8px
-      const maxWidth = window.innerWidth - 56 - 10 - 8;
+      // left edge of panel = 56px (left sidebar 48 + gap 8), right sidebar = 48px, right gap = 8px
+      const maxWidth = window.innerWidth - 56 - 48 - 10 - 8;
       let needed = 284;
       if (userFiles.length > 0) {
         const probe = document.createElement('span');
@@ -1047,7 +1047,7 @@ export default function PdfReader() {
       style={{
         position: "fixed",
         top: 0,
-        right: 0,
+        right: 48,
         bottom: 0,
         left: 48,
         overflowY: "scroll",
