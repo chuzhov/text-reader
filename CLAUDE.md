@@ -14,7 +14,7 @@ npx prisma db seed       # Seed test user (testuser@email.com / 12345678)
 npx prisma studio        # GUI for the SQLite database
 ```
 
-**Prisma non-interactive caveat:** `prisma migrate dev` requires a TTY and will fail in Claude Code's terminal. Use `npx prisma db push --accept-data-loss` to sync the schema directly, then `npx prisma generate`. The `--accept-data-loss` flag is needed whenever a column is being dropped.
+**Prisma non-interactive caveat:** `prisma migrate dev` requires a TTY and will fail in Claude Code's terminal. Ask the user to run it locally, then run `npx prisma generate` to sync the client after the migration is applied.
 
 No test framework is configured.
 

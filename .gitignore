@@ -8,6 +8,10 @@ out/
 # production build
 build/
 
+plan-track-methodology.md
+PLAN.md
+PROGRESS.md
+
 # env files
 .env
 .env.local
