@@ -146,6 +146,8 @@ export default function PdfReader() {
 
   // File management
   const [pdfPath, setPdfPath] = useState(null);
+  const [bookTitle, setBookTitle] = useState(null);
+  const [bookAuthor, setBookAuthor] = useState(null);
   const [userFiles, setUserFiles] = useState([]);
   const [filesLoaded, setFilesLoaded] = useState(false);
   const [showFilePanel, setShowFilePanel] = useState(false);
@@ -363,10 +365,12 @@ export default function PdfReader() {
     setShowTocPanel(false);
     pendingScrollRef.current = scrollOffset;
     currentFileIdRef.current = fileId;
-    const { pages: p, sourceLang: sl, outline: ol } = await extractPdf(filePath);
+    const { pages: p, sourceLang: sl, outline: ol, title: t, author: a } = await extractPdf(filePath);
     setPages(p);
     setSourceLang(sl);
     setOutline(ol);
+    setBookTitle(t);
+    setBookAuthor(a);
     if (fileId) {
       fetch(`/api/files/${fileId}/open`, { method: 'PATCH' });
     }
@@ -419,6 +423,8 @@ export default function PdfReader() {
     e.stopPropagation();
     setPdfPath(null);
     setPages([]);
+    setBookTitle(null);
+    setBookAuthor(null);
     currentFileIdRef.current = null;
     setShowFilePanel(false);
   }
@@ -430,6 +436,8 @@ export default function PdfReader() {
     if (currentFileIdRef.current === fileId) {
       setPdfPath(null);
       setPages([]);
+      setBookTitle(null);
+      setBookAuthor(null);
       currentFileIdRef.current = null;
     }
   }
@@ -517,8 +525,35 @@ export default function PdfReader() {
     setWordStatus(status);
   }, [sourceLang]);
 
+  const currentFile = userFiles.find(f => `/api/files/${f.id}/content` === pdfPath);
+  const headerTitle = bookTitle || currentFile?.name || null;
+
   return (
     <>
+    {/* Header */}
+    <div style={{
+      position: "fixed",
+      top: 0,
+      left: 48,
+      right: 48,
+      height: 48,
+      background: colors.header.background,
+      boxShadow: colors.header.shadow,
+      zIndex: 9,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      pointerEvents: "none",
+    }}>
+      {headerTitle && (
+        <span style={{ fontSize: 16, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "100%", padding: "0 12px" }}>
+          <span style={{ color: colors.header.title }}>{headerTitle}</span>
+          {bookAuthor && (
+            <span style={{ color: colors.icon.default }}>{" · "}{bookAuthor}</span>
+          )}
+        </span>
+      )}
+    </div>
     {/* Left sidebar */}
     <div
       style={{
@@ -1045,7 +1080,7 @@ export default function PdfReader() {
       className="pdf-scroll-container"
       style={{
         position: "fixed",
-        top: 0,
+        top: 48,
         right: 48,
         bottom: 0,
         left: 48,

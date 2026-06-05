@@ -3,6 +3,11 @@ export const colors = {
     background: "#fafaf9",
     langGroup: "#e5e7eb",
   },
+  header: {
+    background: "#fafaf9",
+    title: "#111",
+    shadow: "0 2px 6px rgba(0,0,0,0.07)",
+  },
   app: {
     background: "#f5f5f5",
   },

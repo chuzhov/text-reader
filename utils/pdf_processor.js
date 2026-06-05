@@ -143,6 +143,9 @@ export async function extractPdf(pdfUrl) {
     meta.info?.Language ??
     'en';
   const sourceLang = rawLang.split('-')[0].toLowerCase() || 'en';
+  const metaStr = v => v == null ? null : (Array.isArray(v) ? v[0] : v)?.toString().trim() || null;
+  const title = metaStr(meta.metadata?.getAll?.()?.['dc:title'] ?? meta.info?.Title);
+  const author = metaStr(meta.metadata?.getAll?.()?.['dc:creator'] ?? meta.info?.Author);
 
   const pages = [];
 
@@ -213,5 +216,5 @@ export async function extractPdf(pdfUrl) {
   }
 
   const outline = await extractOutline(pdf);
-  return { pages, sourceLang, outline };
+  return { pages, sourceLang, outline, title, author };
 }
