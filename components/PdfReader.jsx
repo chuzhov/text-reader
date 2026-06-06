@@ -162,6 +162,8 @@ export default function PdfReader() {
 
   const [showActiveDictPanel, setShowActiveDictPanel] = useState(false);
   const [activeDictWords, setActiveDictWords] = useState([]);
+  const [activeDictSourceLangs, setActiveDictSourceLangs] = useState([]);
+  const [activeDictTargetLangs, setActiveDictTargetLangs] = useState([]);
   const [scrollbarWidth, setScrollbarWidth] = useState(17);
 
   // Hover states
@@ -295,6 +297,8 @@ export default function PdfReader() {
       .then(data => {
         if (data?.words?.length > 0) {
           setActiveDictWords(data.words);
+          setActiveDictSourceLangs(data.sourceLangs || []);
+          setActiveDictTargetLangs(data.targetLangs || []);
           setShowActiveDictPanel(true);
           localStorage.setItem('activeDictLastShown', today);
         }
@@ -402,7 +406,11 @@ export default function PdfReader() {
     setBookTitle(t);
     setBookAuthor(a);
     if (fileId) {
-      fetch(`/api/files/${fileId}/open`, { method: 'PATCH' });
+      fetch(`/api/files/${fileId}/open`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceLang: sl, targetLang }),
+      });
     }
   }
 
@@ -417,14 +425,22 @@ export default function PdfReader() {
     if (!file) return;
     e.target.value = '';
     setUploadLoading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    const res = await fetch('/api/files', { method: 'POST', body: formData });
-    const data = await res.json();
-    setUploadLoading(false);
-    if (data.file) {
-      setUserFiles(prev => [data.file, ...prev.filter(f => f.id !== data.file.id)]);
-      loadFile(`/api/files/${data.file.id}/content`, data.file.id, 0);
+    setFileUrlError(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('/api/files', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (data.file) {
+        setUserFiles(prev => [data.file, ...prev.filter(f => f.id !== data.file.id)]);
+        loadFile(`/api/files/${data.file.id}/content`, data.file.id, 0);
+      } else {
+        setFileUrlError(data.error || 'Upload failed');
+      }
+    } catch {
+      setFileUrlError('Upload failed — check your connection');
+    } finally {
+      setUploadLoading(false);
     }
   }
 
@@ -584,6 +600,15 @@ export default function PdfReader() {
         </span>
       )}
     </div>
+    {/* Hidden file input — always mounted, associated via id for reliable label trigger */}
+    <input
+      id="book-file-input"
+      ref={fileInputRef}
+      type="file"
+      accept=".pdf,application/pdf"
+      style={{ display: "none" }}
+      onChange={handleFileUpload}
+    />
     {/* Left sidebar */}
     <div
       style={{
@@ -822,8 +847,10 @@ export default function PdfReader() {
           onClick={async () => {
             if (showActiveDictPanel) { setShowActiveDictPanel(false); return; }
             const res = await fetch('/api/vocabulary/active');
-            const data = res.ok ? await res.json() : { words: [] };
+            const data = res.ok ? await res.json() : { words: [], sourceLangs: [], targetLangs: [] };
             setActiveDictWords(data.words || []);
+            setActiveDictSourceLangs(data.sourceLangs || []);
+            setActiveDictTargetLangs(data.targetLangs || []);
             setShowActiveDictPanel(true);
           }}
           style={{
@@ -873,21 +900,13 @@ export default function PdfReader() {
           justifyContent: "space-between",
           alignItems: "center",
         }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>Open PDF</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#111827" }}>Bookshelf</span>
           <button className="panel-close" onClick={() => setShowFilePanel(false)}>×</button>
         </div>
 
         <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,application/pdf"
-            style={{ display: "none" }}
-            onChange={handleFileUpload}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploadLoading}
+          <label
+            htmlFor={uploadLoading ? undefined : "book-file-input"}
             style={{
               width: "100%",
               padding: "8px 12px",
@@ -902,6 +921,7 @@ export default function PdfReader() {
               alignItems: "center",
               justifyContent: "center",
               gap: 6,
+              boxSizing: "border-box",
             }}
           >
             {uploadLoading ? "Loading…" : (
@@ -914,7 +934,7 @@ export default function PdfReader() {
                 Upload from PC
               </>
             )}
-          </button>
+          </label>
 
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input
@@ -1045,6 +1065,10 @@ export default function PdfReader() {
     {showActiveDictPanel && (
       <ActiveDictPanel
         words={activeDictWords}
+        sourceLangs={activeDictSourceLangs}
+        targetLangs={activeDictTargetLangs}
+        defaultSource={pdfPath ? sourceLang : "en"}
+        defaultTarget={pdfPath ? targetLang : "ru"}
         onClose={() => setShowActiveDictPanel(false)}
       />
     )}
@@ -1163,7 +1187,7 @@ export default function PdfReader() {
         width: "100%",
         maxWidth: pages.length > 0 ? pages[0].width + 16 + scrollbarWidth : undefined,
         margin: "0 auto",
-        overflowY: "scroll",
+        overflowY: pages.length > 0 ? "auto" : "hidden",
         overflowX: "auto",
       }}
     >
@@ -1182,7 +1206,7 @@ export default function PdfReader() {
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
             <polyline points="14 2 14 8 20 8"/>
           </svg>
-          <div style={{ fontSize: 15, fontWeight: 500, color: "#6b7280" }}>No PDF open</div>
+          <div style={{ fontSize: 15, fontWeight: 500, color: "#6b7280" }}>No book open</div>
           <button
             onClick={() => setShowFilePanel(true)}
             style={{
@@ -1197,7 +1221,7 @@ export default function PdfReader() {
               fontWeight: 600,
             }}
           >
-            Open PDF
+            Open a book
           </button>
         </div>
       )}

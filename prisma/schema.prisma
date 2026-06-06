@@ -68,6 +68,8 @@ model UserFile {
   userId       Int
   name         String
   path         String
+  sourceLang   String @default("en")
+  targetLang   String @default("ru")
   scrollOffset Int       @default(0)
   uploadedAt   DateTime  @default(now())
   lastOpenedAt DateTime?

@@ -12,14 +12,16 @@ export async function GET() {
     include: { word: true },
     orderBy: { addedAt: 'desc' },
   });
-  return NextResponse.json({
-    words: activeWords.map(aw => ({
-      id: aw.wordId,
-      word: aw.word.word,
-      translation: aw.word.translation,
-      sourceLang: aw.word.sourceLang,
-    })),
-  });
+  const words = activeWords.map(aw => ({
+    id: aw.wordId,
+    word: aw.word.word,
+    translation: aw.word.translation,
+    sourceLang: aw.word.sourceLang,
+    targetLang: aw.word.targetLang,
+  }));
+  const sourceLangs = [...new Set(words.map(w => w.sourceLang))].sort();
+  const targetLangs = [...new Set(words.map(w => w.targetLang))].sort();
+  return NextResponse.json({ words, sourceLangs, targetLangs });
 }
 
 export async function POST(request) {

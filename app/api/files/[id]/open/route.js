@@ -13,9 +13,14 @@ export async function PATCH(request, { params }) {
   const file = await prisma.userFile.findFirst({ where: { id: Number(id), userId } });
   if (!file) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
+  const body = await request.json().catch(() => ({}));
+  const data = { lastOpenedAt: new Date() };
+  if (body.sourceLang) data.sourceLang = body.sourceLang;
+  if (body.targetLang) data.targetLang = body.targetLang;
+
   const updated = await prisma.userFile.update({
     where: { id: Number(id) },
-    data: { lastOpenedAt: new Date() },
+    data,
   });
 
   return NextResponse.json({ file: updated });
