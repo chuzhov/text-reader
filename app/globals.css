@@ -44,20 +44,3 @@
   animation: pdf-spin 0.7s linear infinite;
 }
 
-.pdf-scroll-container::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.pdf-scroll-container::-webkit-scrollbar-track {
-  background: #d0d0d0;
-}
-
-.pdf-scroll-container::-webkit-scrollbar-thumb {
-  background: #999;
-  border-radius: 5px;
-}
-
-.pdf-scroll-container::-webkit-scrollbar-thumb:hover {
-  background: #777;
-}

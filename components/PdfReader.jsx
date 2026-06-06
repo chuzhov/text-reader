@@ -6,6 +6,7 @@ import { extractPdf } from "@/utils/pdf_processor";
 import { translateWord } from "@/utils/translation_api";
 import { getCefrLevel } from "@/utils/cefr";
 import { colors } from "@/utils/theme";
+import ActiveDictPanel from "@/components/ActiveDictPanel";
 
 function getSelectedText() {
   return window.getSelection()?.toString().trim() || '';
@@ -159,8 +160,13 @@ export default function PdfReader() {
   const [fileUrlError, setFileUrlError] = useState(null);
   const [uploadLoading, setUploadLoading] = useState(false);
 
+  const [showActiveDictPanel, setShowActiveDictPanel] = useState(false);
+  const [activeDictWords, setActiveDictWords] = useState([]);
+  const [scrollbarWidth, setScrollbarWidth] = useState(17);
+
   // Hover states
   const [bookshelfHovered, setBookshelfHovered] = useState(false);
+  const [activeDictHovered, setActiveDictHovered] = useState(false);
   const [starHovered, setStarHovered] = useState(false);
   const [bookHovered, setBookHovered] = useState(false);
   const [sourceLangHovered, setSourceLangHovered] = useState(false);
@@ -180,6 +186,15 @@ export default function PdfReader() {
   const pendingScrollRef = useRef(null);
   const currentFileIdRef = useRef(null);
   const scrollSaveTimerRef = useRef(null);
+
+  // Measure OS/browser scrollbar width once on mount
+  useEffect(() => {
+    const el = document.createElement('div');
+    el.style.cssText = 'overflow:scroll;width:100px;height:100px;position:absolute;top:-9999px;visibility:hidden';
+    document.body.appendChild(el);
+    setScrollbarWidth(el.offsetWidth - el.clientWidth);
+    document.body.removeChild(el);
+  }, []);
 
   // Close user menu on outside click
   useEffect(() => {
@@ -221,7 +236,7 @@ export default function PdfReader() {
   useEffect(() => {
     if (!showTocPanel || outline.length === 0) return;
     function calcWidth() {
-      const maxWidth = window.innerWidth - 56 - 48 - 10 - 8;
+      const maxWidth = window.innerWidth - 56 - 48 - scrollbarWidth - 8;
       const flat = flattenOutline(outline);
       const probe = document.createElement('span');
       probe.style.cssText = 'position:absolute;left:-9999px;visibility:hidden;white-space:nowrap;font-size:12px';
@@ -240,15 +255,14 @@ export default function PdfReader() {
     calcWidth();
     window.addEventListener('resize', calcWidth);
     return () => window.removeEventListener('resize', calcWidth);
-  }, [showTocPanel, outline]);
+  }, [showTocPanel, outline, scrollbarWidth]);
 
   // Resize panel to fit the longest filename, up to the available viewport width
   useEffect(() => {
     if (!showFilePanel) return;
     function calcWidth() {
-      // scrollbar = 10px (matches .pdf-scroll-container::-webkit-scrollbar width)
       // left edge of panel = 56px (left sidebar 48 + gap 8), right sidebar = 48px, right gap = 8px
-      const maxWidth = window.innerWidth - 56 - 48 - 10 - 8;
+      const maxWidth = window.innerWidth - 56 - 48 - scrollbarWidth - 8;
       let needed = 284;
       if (userFiles.length > 0) {
         const probe = document.createElement('span');
@@ -269,7 +283,23 @@ export default function PdfReader() {
     calcWidth();
     window.addEventListener('resize', calcWidth);
     return () => window.removeEventListener('resize', calcWidth);
-  }, [showFilePanel, userFiles]);
+  }, [showFilePanel, userFiles, scrollbarWidth]);
+
+  // Auto-show active dictionary once per day
+  useEffect(() => {
+    if (!session) return;
+    const today = new Date().toDateString();
+    if (localStorage.getItem('activeDictLastShown') === today) return;
+    fetch('/api/vocabulary/active')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.words?.length > 0) {
+          setActiveDictWords(data.words);
+          setShowActiveDictPanel(true);
+          localStorage.setItem('activeDictLastShown', today);
+        }
+      });
+  }, [session]);
 
   // Load most recent file on mount
   useEffect(() => {
@@ -785,6 +815,36 @@ export default function PdfReader() {
             {targetLang[0].toUpperCase() + targetLang.slice(1)}
           </button>
         </div>
+        {/* Active Dictionary toggle */}
+        <button
+          onMouseEnter={() => setActiveDictHovered(true)}
+          onMouseLeave={() => setActiveDictHovered(false)}
+          onClick={async () => {
+            if (showActiveDictPanel) { setShowActiveDictPanel(false); return; }
+            const res = await fetch('/api/vocabulary/active');
+            const data = res.ok ? await res.json() : { words: [] };
+            setActiveDictWords(data.words || []);
+            setShowActiveDictPanel(true);
+          }}
+          style={{
+            background: showActiveDictPanel ? colors.app.background : "none",
+            border: "none",
+            padding: "2px 0",
+            cursor: "pointer",
+            borderRadius: 6,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+            fill={showActiveDictPanel ? "currentColor" : "none"}
+            stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ color: activeDictHovered || showActiveDictPanel ? colors.icon.hover : colors.icon.default }}
+          >
+            <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>
+          </svg>
+        </button>
       </div>
     </div>
 
@@ -981,6 +1041,14 @@ export default function PdfReader() {
       </div>
     )}
 
+    {/* Active Dictionary panel */}
+    {showActiveDictPanel && (
+      <ActiveDictPanel
+        words={activeDictWords}
+        onClose={() => setShowActiveDictPanel(false)}
+      />
+    )}
+
     {/* ToC panel */}
     {showTocPanel && outline.length > 0 && (
       <div
@@ -1050,8 +1118,6 @@ export default function PdfReader() {
 
     {/* Main scroll area */}
     <div
-      ref={containerRef}
-      onScroll={handleScroll}
       onClick={() => {
         const selectedText = getSelectedText();
         if (selectedText) {
@@ -1077,17 +1143,28 @@ export default function PdfReader() {
         }
         closeCard();
       }}
-      className="pdf-scroll-container"
       style={{
         position: "fixed",
         top: 48,
         right: 48,
         bottom: 0,
         left: 48,
-        overflowY: "scroll",
-        overflowX: "auto",
+        overflow: "hidden",
         background: colors.app.background,
         userSelect: (card || loadingPos) ? "none" : "text",
+      }}
+    >
+    <div
+      ref={containerRef}
+      onScroll={handleScroll}
+      className="pdf-scroll-container"
+      style={{
+        height: "100%",
+        width: "100%",
+        maxWidth: pages.length > 0 ? pages[0].width + 16 + scrollbarWidth : undefined,
+        margin: "0 auto",
+        overflowY: "scroll",
+        overflowX: "auto",
       }}
     >
       {/* Empty state */}
@@ -1143,7 +1220,7 @@ export default function PdfReader() {
             key={page.pageNum}
             style={{
               paddingLeft: `max(16px, calc(50% - ${page.width / 2}px))`,
-              paddingRight: 16,
+              paddingRight: 0,
               marginBottom: 20,
             }}
           >
@@ -1315,6 +1392,7 @@ export default function PdfReader() {
           </div>
         </div>
       )}
+    </div>
     </div>
     </>
   );
