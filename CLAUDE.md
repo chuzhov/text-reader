@@ -28,11 +28,11 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 
 1. `components/PdfReader.jsx` mounts and fetches `GET /api/files`; if the user has files, calls `extractPdf("/api/files/{id}/content")` for the most recently opened one and restores its saved scroll position
 2. `utils/pdf_processor.js` uses pdfjs-dist to extract text items with transform matrix positions; also reads `dc:language` from PDF metadata (falls back to `"en"`). The worker is served from `/pdf.worker.min.js` (copied from `node_modules/pdfjs-dist/build/pdf.worker.min.js` to `public/` by the webpack build hook in `next.config.mjs` — no CDN dependency)
-3. `extractPdf` returns `{ pages, sourceLang, outline }` — `sourceLang` is the BCP-47 primary tag (e.g. `"en"`); `outline` is the resolved PDF bookmark tree (empty array if none)
+3. `extractPdf` returns `{ pages, sourceLang, outline, title, author }` — `sourceLang` is the BCP-47 primary tag (e.g. `"en"`); `outline` is the resolved PDF bookmark tree (empty array if none); `title` and `author` are strings from PDF XMP/info metadata (`dc:title`/`dc:creator` or `info.Title`/`info.Author`), or `null` if absent
 4. Extracted words with absolute `{ x, y }` coordinates are rendered as `position: absolute` spans inside per-page containers
 5. On click, `translateWord(word, sourceLang)` POSTs to `/api/translate`, which proxies to the free MyMemory API (`api.mymemory.translated.net`) with `langpair=sourceLang|ru` — no API key, falls back to original text on error
 
-**Layout:** Two fixed 48px sidebars flank the main scroll area. Left sidebar (`left: 0`) holds reading operations (bookshelf, ToC, settings, user menu). Right sidebar (`right: 0`) holds translation options (source/target language pill). Main scroll area uses `left: 48, right: 48`. Both sidebars share `colors.sidebar.*`; use CSS classes `sb-left` / `sb-right` only when their styles diverge.
+**Layout:** Two fixed 48px sidebars flank the main scroll area. Left sidebar (`left: 0`) holds reading operations (bookshelf, ToC, settings, user menu). Right sidebar (`right: 0`) holds translation options (source/target language pill). A fixed 48px header (`top: 0, left: 48, right: 48`) sits between the sidebars and shows the book title and author from PDF metadata (falls back to filename; author rendered with `·` separator in muted gray when present). Main scroll area uses `top: 48, left: 48, right: 48`. Both sidebars share `colors.sidebar.*`; use CSS classes `sb-left` / `sb-right` only when their styles diverge.
 
 **File storage:** Uploaded files are saved to `uploads/` at the project root (outside `public/`) and served via the authenticated `GET /api/files/[id]/content` route. Files must **not** be stored in `public/` — Next.js production only serves static files that existed at build time; dynamically-added files in `public/` return 404. The `uploads/` directory is in `.gitignore`.
 
@@ -55,6 +55,8 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - `visiblePages` — `Set<number>` of page numbers currently in (or near) the viewport, maintained by `IntersectionObserver`
 - `currentPage` — `number | null`; the page whose top edge is at or above the scroll container top (i.e. the page the user is reading); updated on every scroll event via `computeCurrentPage` which queries `[data-pagenum]` elements directly — kept separate from `visiblePages` because that Set has a 300px rootMargin bias and is only reliable for virtualization, not reading-position tracking
 - `pdfPath` — current `/api/files/{id}/content` URL being rendered, or `null` if no file is open
+- `bookTitle` — title string from PDF metadata (`dc:title` / `info.Title`), or `null`; shown in the header; falls back to the filename at render time
+- `bookAuthor` — author string from PDF metadata (`dc:creator` / `info.Author`), or `null`; rendered with `·` separator after the title when present
 - `userFiles` — array of the user's `UserFile` records from the API, sorted by most recently opened
 - `filesLoaded` — `false` until the initial `/api/files` fetch completes; gates the empty state render
 - `showFilePanel` — whether the file picker panel is open
@@ -103,6 +105,7 @@ All colors live in `utils/theme.js` as a single `colors` object, **namespaced by
 ```js
 colors.app.*       // top-level shell
 colors.sidebar.*   // shared sidebar settings — both sidebars (background, langGroup pill)
+colors.header.*    // top header bar (background, title color, bottom shadow)
 colors.page.*      // per-page container
 colors.word.*      // word spans — includes linkColor for PDF link annotations
 colors.icon.*      // shared icon tints — default and hover
