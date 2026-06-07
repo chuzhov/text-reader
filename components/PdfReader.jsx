@@ -1070,6 +1070,14 @@ export default function PdfReader() {
         defaultSource={pdfPath ? sourceLang : "en"}
         defaultTarget={pdfPath ? targetLang : "ru"}
         onClose={() => setShowActiveDictPanel(false)}
+        onRemoveWord={async (wordId) => {
+          await fetch('/api/vocabulary/active', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wordId }),
+          });
+          setActiveDictWords(prev => prev.filter(w => w.id !== wordId));
+        }}
       />
     )}
 

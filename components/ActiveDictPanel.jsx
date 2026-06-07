@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { colors } from "@/utils/theme";
+import { getCefrLevel } from "@/utils/cefr";
 
 const LANG_LABELS = {
   en: "English", ru: "Russian", fr: "French", de: "German", es: "Spanish",
@@ -14,7 +15,7 @@ function langLabel(code) {
 }
 
 export default function ActiveDictPanel({
-  words, sourceLangs, targetLangs, defaultSource, defaultTarget, onClose,
+  words, sourceLangs, targetLangs, defaultSource, defaultTarget, onClose, onRemoveWord,
 }) {
   const [sortMode, setSortMode] = useState("date");
   const [selectedSource, setSelectedSource] = useState(
@@ -23,10 +24,23 @@ export default function ActiveDictPanel({
   const [selectedTarget, setSelectedTarget] = useState(
     targetLangs.includes(defaultTarget) ? defaultTarget : (targetLangs[0] ?? defaultTarget)
   );
+  const [hoveredRow, setHoveredRow] = useState(null);
+  const [hoveredBtn, setHoveredBtn] = useState(null); // { row, btn: 'speaker'|'remove' }
 
-  const filtered = words
-    .filter(w => w.sourceLang === selectedSource && w.targetLang === selectedTarget)
-    .sort((a, b) => sortMode === "alpha" ? a.word.localeCompare(b.word) : 0);
+  const filtered = useMemo(() =>
+    words
+      .filter(w => w.sourceLang === selectedSource && w.targetLang === selectedTarget)
+      .sort((a, b) => sortMode === "alpha" ? a.word.localeCompare(b.word) : 0),
+    [words, selectedSource, selectedTarget, sortMode]
+  );
+
+  const maxWordPx = useMemo(() => {
+    if (filtered.length === 0 || typeof document === 'undefined') return 0;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    return Math.max(...filtered.map(w => Math.ceil(ctx.measureText(w.word).width)));
+  }, [filtered]);
 
   const selectStyle = {
     fontSize: 12,
@@ -38,6 +52,16 @@ export default function ActiveDictPanel({
     cursor: "pointer",
     outline: "none",
   };
+
+  const actionBtnStyle = (row, btn) => ({
+    background: "none",
+    border: "none",
+    padding: "0 2px",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    color: hoveredBtn?.row === row && hoveredBtn?.btn === btn ? colors.icon.hover : colors.icon.default,
+  });
 
   return (
     <div style={{
@@ -74,7 +98,7 @@ export default function ActiveDictPanel({
         <button className="panel-close" onClick={onClose}>×</button>
       </div>
 
-      {/* Language selectors */}
+      {/* Language selectors + sort toggle */}
       <div style={{
         padding: "8px 14px",
         borderBottom: `1px solid ${colors.card.border}`,
@@ -84,11 +108,7 @@ export default function ActiveDictPanel({
         flexShrink: 0,
         flexWrap: "wrap",
       }}>
-        <select
-          value={selectedSource}
-          onChange={e => setSelectedSource(e.target.value)}
-          style={selectStyle}
-        >
+        <select value={selectedSource} onChange={e => setSelectedSource(e.target.value)} style={selectStyle}>
           {sourceLangs.length > 0 ? sourceLangs.map(l => (
             <option key={l} value={l}>{langLabel(l)}</option>
           )) : (
@@ -96,11 +116,7 @@ export default function ActiveDictPanel({
           )}
         </select>
         <span style={{ fontSize: 12, color: colors.icon.default }}>{">"}</span>
-        <select
-          value={selectedTarget}
-          onChange={e => setSelectedTarget(e.target.value)}
-          style={selectStyle}
-        >
+        <select value={selectedTarget} onChange={e => setSelectedTarget(e.target.value)} style={selectStyle}>
           {targetLangs.length > 0 ? targetLangs.map(l => (
             <option key={l} value={l}>{langLabel(l)}</option>
           )) : (
@@ -146,19 +162,77 @@ export default function ActiveDictPanel({
         ) : (
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <tbody>
-              {filtered.map((w, i) => (
-                <tr
-                  key={w.id}
-                  style={{ borderBottom: i < filtered.length - 1 ? `1px solid ${colors.card.border}` : "none" }}
-                >
-                  <td style={{ padding: "8px 14px", fontSize: 14, color: "#111", width: "40%" }}>
-                    {w.word}
-                  </td>
-                  <td style={{ padding: "8px 14px", fontSize: 13, color: "#6b7280" }}>
-                    {w.translation}
-                  </td>
-                </tr>
-              ))}
+              {filtered.map((w, i) => {
+                const cefr = getCefrLevel(w.word, selectedSource);
+                const isRowHovered = hoveredRow === i;
+                return (
+                  <tr
+                    key={w.id}
+                    onMouseEnter={() => setHoveredRow(i)}
+                    onMouseLeave={() => { setHoveredRow(null); setHoveredBtn(null); }}
+                    style={{
+                      borderBottom: i < filtered.length - 1 ? `1px solid ${colors.card.border}` : "none",
+                      background: isRowHovered ? colors.filePanel.itemHoverBg : "transparent",
+                    }}
+                  >
+                    <td style={{ padding: "8px 4px 8px 14px", fontSize: 12, color: colors.icon.default, textAlign: "right", whiteSpace: "nowrap", width: 1 }}>
+                      {i + 1}.
+                    </td>
+                    <td style={{ padding: "8px 8px 8px 6px", width: 48, verticalAlign: "middle" }}>
+                      {cefr && (
+                        <span style={{ background: colors.cefr[cefr], color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, letterSpacing: 0.5 }}>
+                          {cefr}
+                        </span>
+                      )}
+                    </td>
+                    <td style={{ padding: "8px 14px 8px 0" }}>
+                      <div style={{ display: "flex", alignItems: "center" }}>
+                        <span style={{ minWidth: maxWordPx + 8, fontSize: 14, color: "#111" }}>
+                          {w.word}
+                        </span>
+                        <div style={{ display: "flex", gap: 4, visibility: isRowHovered ? "visible" : "hidden" }}>
+                          <button
+                            onMouseEnter={() => setHoveredBtn({ row: i, btn: 'speaker' })}
+                            onMouseLeave={() => setHoveredBtn(null)}
+                            onClick={() => {
+                              if (typeof speechSynthesis === 'undefined') return;
+                              speechSynthesis.cancel();
+                              const utter = new SpeechSynthesisUtterance(w.word);
+                              utter.lang = selectedSource;
+                              speechSynthesis.speak(utter);
+                            }}
+                            title="Pronounce"
+                            style={actionBtnStyle(i, 'speaker')}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M19 6C20.5 7.5 21 10 21 12C21 14 20.5 16.5 19 18M16 8.99998C16.5 9.49998 17 10.5 17 12C17 13.5 16.5 14.5 16 15M3 10.5V13.5C3 14.6046 3.5 15.5 5.5 16C7.5 16.5 9 21 12 21C14 21 14 3 12 3C9 3 7.5 7.5 5.5 8C3.5 8.5 3 9.39543 3 10.5Z"/>
+                            </svg>
+                          </button>
+                          <button
+                            onMouseEnter={() => setHoveredBtn({ row: i, btn: 'remove' })}
+                            onMouseLeave={() => setHoveredBtn(null)}
+                            onClick={() => {
+                              if (window.confirm(`Remove "${w.word}" from Active Dictionary?`)) {
+                                onRemoveWord(w.id);
+                              }
+                            }}
+                            title="Remove from Active Dictionary"
+                            style={actionBtnStyle(i, 'remove')}
+                          >
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>
+                              <line x1="9" y1="12.5" x2="15" y2="12.5"/>
+                            </svg>
+                          </button>
+                        </div>
+                        <span style={{ marginLeft: 8, fontSize: 13, color: "#6b7280" }}>
+                          {w.translation}
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
