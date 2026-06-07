@@ -1187,7 +1187,7 @@ export default function PdfReader() {
         width: "100%",
         maxWidth: pages.length > 0 ? pages[0].width + 16 + scrollbarWidth : undefined,
         margin: "0 auto",
-        overflowY: pages.length > 0 ? "auto" : "hidden",
+        overflowY: showActiveDictPanel ? "hidden" : (pages.length > 0 ? "auto" : "hidden"),
         overflowX: "auto",
       }}
     >
