@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { extractPdf } from "@/utils/pdf_processor";
-import { translateWord } from "@/utils/translation_api";
+import { translateWord, getCefrFromAI, extractContext } from "@/utils/translation_api";
 import { getCefrLevel } from "@/utils/cefr";
 import { colors } from "@/utils/theme";
 import ActiveDictPanel from "@/components/ActiveDictPanel";
@@ -72,7 +72,7 @@ const PageView = React.memo(function PageView({ page, isVisible, onWordClick, on
           return (
             <span
               key={i}
-              onClick={onWordClick}
+              onClick={(e) => onWordClick(e, page.pageNum, i)}
               style={{
                 position: "absolute",
                 left: w.x,
@@ -179,6 +179,7 @@ export default function PdfReader() {
   const [speakerHovered, setSpeakerHovered] = useState(false);
 
   const containerRef = useRef(null);
+  const pagesRef = useRef([]);
   const userMenuRef = useRef(null);
   const filePanelRef = useRef(null);
   const tocPanelRef = useRef(null);
@@ -197,6 +198,8 @@ export default function PdfReader() {
     setScrollbarWidth(el.offsetWidth - el.clientWidth);
     document.body.removeChild(el);
   }, []);
+
+  useEffect(() => { pagesRef.current = pages; }, [pages]);
 
   // Close user menu on outside click
   useEffect(() => {
@@ -519,7 +522,7 @@ export default function PdfReader() {
   }
 
   // Stable callback — PageView won't re-render when card opens/closes
-  const onWordClick = useCallback(async (e) => {
+  const onWordClick = useCallback(async (e, pageNum, wordIndex) => {
     e.stopPropagation();
     fetch('/api/visit/ping', { method: 'POST' });
 
@@ -546,6 +549,7 @@ export default function PdfReader() {
     }
 
     const word = getWordAtPoint(e.clientX, e.clientY, e.currentTarget.textContent).replace(/[.,;:!?"'…]+$/, '');
+    const context = extractContext(pagesRef.current, pageNum, wordIndex);
 
     if (activeSpanRef.current) {
       activeSpanRef.current.style.background = colors.word.background;
@@ -559,16 +563,22 @@ export default function PdfReader() {
     setWordStatus(null);
     setLoadingPos({ x: e.clientX, y: rect.bottom + 8 });
 
-    const isSingle = !word.includes(' ');
     const [translation, status] = await Promise.all([
-      translateWord(word, sourceLang),
-      isSingle
-        ? fetch(`/api/vocabulary/check?word=${encodeURIComponent(word)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null)
-        : Promise.resolve(null),
+      translateWord(word, sourceLang, context),
+      fetch(`/api/vocabulary/check?word=${encodeURIComponent(word)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null),
     ]);
     setLoadingPos(null);
-    setCard({ word, translation, cefrLevel: getCefrLevel(word, sourceLang), ...cardPos });
+    setCard({ word, translation, cefrLevel: null, ...cardPos });
     setWordStatus(status);
+
+    const localCefr = getCefrLevel(word, sourceLang);
+    if (localCefr !== null) {
+      setCard(prev => prev?.word === word ? { ...prev, cefrLevel: localCefr } : prev);
+    } else {
+      getCefrFromAI(word, sourceLang).then(({ cefrLevel }) => {
+        setCard(prev => prev?.word === word ? { ...prev, cefrLevel } : prev);
+      });
+    }
   }, [sourceLang]);
 
   const currentFile = userFiles.find(f => `/api/files/${f.id}/content` === pdfPath);

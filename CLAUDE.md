@@ -30,7 +30,17 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 2. `utils/pdf_processor.js` uses pdfjs-dist to extract text items with transform matrix positions; also reads `dc:language` from PDF metadata (falls back to `"en"`). The worker is served from `/pdf.worker.min.js` (copied from `node_modules/pdfjs-dist/build/pdf.worker.min.js` to `public/` by the webpack build hook in `next.config.mjs` — no CDN dependency)
 3. `extractPdf` returns `{ pages, sourceLang, outline, title, author }` — `sourceLang` is the BCP-47 primary tag (e.g. `"en"`); `outline` is the resolved PDF bookmark tree (empty array if none); `title` and `author` are strings from PDF XMP/info metadata (`dc:title`/`dc:creator` or `info.Title`/`info.Author`), or `null` if absent
 4. Extracted words with absolute `{ x, y }` coordinates are rendered as `position: absolute` spans inside per-page containers
-5. On click, `translateWord(word, sourceLang)` POSTs to `/api/translate`, which proxies to the free MyMemory API (`api.mymemory.translated.net`) with `langpair=sourceLang|ru` — no API key, falls back to original text on error
+5. On click, `translateWord(word, sourceLang, context)` POSTs to `/api/translate`; the server delegates to the configured provider (default: Claude) with surrounding context spans, falling back to MyMemory on error
+
+**Translation service settings** (`lib/translation/config.js` — all overridable via env vars):
+| Env var | Default | Meaning |
+|---|---|---|
+| `TRANSLATION_PROVIDER` | `"claude"` | Primary provider (`"claude"` or `"mymemory"`) |
+| `TRANSLATION_MODEL` | `"claude-haiku-4-5-20251001"` | Claude model used for translation and CEFR |
+| `TRANSLATION_FALLBACK` | `true` | Fall back to MyMemory when Claude fails |
+| `CONTEXT_SPAN_WORDS` | `12` | Words collected before/after the clicked word for context |
+| `CEFR_FROM_AI` | `true` | Ask Claude for CEFR when the local dict misses |
+| `LOG_AI_CALLS` | `true` | Append each AI call to `logs/{userId}.jsonl` |
 
 **Layout:** Two fixed 48px sidebars flank the main scroll area. Left sidebar (`left: 0`) holds reading operations (bookshelf, ToC, settings, user menu). Right sidebar (`right: 0`) holds translation options (source/target language pill). A fixed 48px header (`top: 0, left: 48, right: 48`) sits between the sidebars and shows the book title and author from PDF metadata (falls back to filename; author rendered with `·` separator in muted gray when present). Main scroll area uses `top: 48, left: 48, right: 48`. Both sidebars share `colors.sidebar.*`; use CSS classes `sb-left` / `sb-right` only when their styles diverge.
 

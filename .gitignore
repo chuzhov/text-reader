@@ -40,6 +40,7 @@ public/pdf.worker.min.js
 public/uploads/*
 !public/uploads/.gitkeep
 uploads/
+logs/
 dev.db
 
 /app/generated/prisma
