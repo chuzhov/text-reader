@@ -67,6 +67,20 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - `showTocPanel` — whether the Table of Contents side panel is open
 - `tocPanelWidth` — calculated width of the ToC panel (same probe-span technique and same `window.innerWidth - 56 - 48 - 10 - 8` bound as `panelWidth`); computed when the panel opens
 - `tocHovered` — `true` while the mouse is inside the ToC panel; used to keep the panel visible
+- `showActiveDictPanel` — whether the Active Dictionary panel is open; when `true`, the scroll container's `overflowY` is set to `"hidden"` to lock book scroll
+- `activeDictWords` — `[{ id, word, translation, sourceLang, targetLang }]` loaded from `GET /api/vocabulary/active` each time the panel opens
+- `activeDictSourceLangs` / `activeDictTargetLangs` — unique language code arrays derived from the fetched words; passed to `ActiveDictPanel` as selectable filter options
+- `activeDictHovered` — hover state for the star sidebar button
+
+**Active Dictionary panel** (`components/ActiveDictPanel.jsx`):
+- Fixed overlay at `top: 56, left: 56, right: 56`; header background matches `colors.sidebar.background`
+- **Language filter row:** source `<select>` + `>` separator + target `<select>`; a `1px` vertical divider; sort toggle pill (calendar icon = date order, A-Z icon = alpha order)
+- **Sort:** `"date"` (default, preserves `addedAt desc` order from API) or `"alpha"` (client-side `localeCompare`) — applied via `useMemo` on the filtered list
+- **Word list:** `<table>` with three columns per row — index number (muted, right-aligned, `width:1`), CEFR badge (fixed `width:48`), and a flex row containing: word span, action buttons, inline translation
+- **Button alignment:** canvas `ctx.measureText` finds the widest word's pixel width; all word spans get `minWidth: maxWordPx + 8` so action buttons land at the same X across all rows
+- **Hover actions:** `visibility: hidden/visible` (not `display: none`) keeps button space reserved; on row hover, speaker button (SpeechSynthesis, `utter.lang = selectedSource`) and star-minus button appear
+- **Inline removal confirmation:** clicking star-minus sets `pendingRemove` to that row index — the speaker/star-minus pair is replaced by a checkmark and an X button; checkmark calls `onRemoveWord(w.id)` (issues `DELETE /api/vocabulary/active` and filters local state in `PdfReader`); X resets `pendingRemove`; the row stays highlighted via `pendingRemove === i` even without mouse hover
+- Both speaker and star-minus SVGs use `strokeWidth="2"`; star-minus has an extra `<line x1="9" y1="12.5" x2="15" y2="12.5"/>` for the minus mark
 
 **Translation card placement** (`computeCardPos(anchorRect, xAnchor)` helper):
 - Horizontal: `x = clamp(e.clientX, 64, window.innerWidth - 280 - 48 - 8)`; the `64` left-clamp guards the left sidebar; the `48` right-offset guards the right sidebar; uses the actual click X (`e.clientX`) for single-word clicks so the card is close to the clicked word, not the span's left edge
