@@ -9,6 +9,10 @@ export async function POST(request) {
   const session = await getServerSession(authOptions);
   const { text, sourceLang = 'en', targetLang = 'ru', context = {} } = await request.json();
 
+  if (!/[\p{L}]/u.test(text)) {
+    return NextResponse.json({ translations: [text] });
+  }
+
   const wordCount = text.trim().split(/\s+/).length;
   const isLongSelection = wordCount >= config.contextSpanWords;
   const effectiveContext = (isLongSelection && !config.provideContextForLongText) ? {} : context;
@@ -24,14 +28,14 @@ export async function POST(request) {
         sourceLang,
         contextBefore: effectiveContext.before ?? '',
         contextAfter: effectiveContext.after ?? '',
-        response: result.translation,
+        response: result.translations,
         tokensIn: result.tokensIn ?? null,
         tokensOut: result.tokensOut ?? null,
       });
     }
 
-    return NextResponse.json({ translation: result.translation });
+    return NextResponse.json({ translations: result.translations });
   } catch {
-    return NextResponse.json({ translation: text });
+    return NextResponse.json({ translations: [text] });
   }
 }

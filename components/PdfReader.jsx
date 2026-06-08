@@ -538,18 +538,19 @@ export default function PdfReader() {
       setCard(null);
       setWordStatus(null);
       setLoadingPos({ x: selRect.left, y: selRect.bottom + 8 });
-      const translation = await translateWord(selectedText, sourceLang);
+      const translations = await translateWord(selectedText, sourceLang);
       setLoadingPos(null);
-      const status = translation && !translation.includes(' ')
+      const status = translations?.[0] && !translations[0].includes(' ')
         ? await fetch(`/api/vocabulary/check?word=${encodeURIComponent(selectedText)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null)
         : null;
-      setCard({ word: selectedText, translation, cefrLevel: null, ...cardPos });
+      setCard({ word: selectedText, translations, cefrLevel: null, ...cardPos });
       setWordStatus(status);
       return;
     }
 
     const word = getWordAtPoint(e.clientX, e.clientY, e.currentTarget.textContent).replace(/[.,;:!?"'…]+$/, '');
-    const context = extractContext(pagesRef.current, pageNum, wordIndex);
+    if (!/\p{L}/u.test(word)) return;
+    const context = extractContext(pagesRef.current, pageNum, wordIndex, word);
 
     if (activeSpanRef.current) {
       activeSpanRef.current.style.background = colors.word.background;
@@ -563,12 +564,12 @@ export default function PdfReader() {
     setWordStatus(null);
     setLoadingPos({ x: e.clientX, y: rect.bottom + 8 });
 
-    const [translation, status] = await Promise.all([
+    const [translations, status] = await Promise.all([
       translateWord(word, sourceLang, context),
       fetch(`/api/vocabulary/check?word=${encodeURIComponent(word)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null),
     ]);
     setLoadingPos(null);
-    setCard({ word, translation, cefrLevel: null, ...cardPos });
+    setCard({ word, translations, cefrLevel: null, ...cardPos });
     setWordStatus(status);
 
     const localCefr = getCefrLevel(word, sourceLang);
@@ -1173,12 +1174,12 @@ export default function PdfReader() {
           setCard(null);
           setWordStatus(null);
           setLoadingPos({ x: selRect.left, y: selRect.bottom + 8 });
-          translateWord(selectedText, sourceLang).then(async translation => {
+          translateWord(selectedText, sourceLang).then(async translations => {
             setLoadingPos(null);
-            const status = translation && !translation.includes(' ')
+            const status = translations?.[0] && !translations[0].includes(' ')
               ? await fetch(`/api/vocabulary/check?word=${encodeURIComponent(selectedText)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null)
               : null;
-            setCard({ word: selectedText, translation, cefrLevel: null, ...cardPos });
+            setCard({ word: selectedText, translations, cefrLevel: null, ...cardPos });
             setWordStatus(status);
           });
           return;
@@ -1353,19 +1354,19 @@ export default function PdfReader() {
             <button className="panel-close" onClick={closeCard}>×</button>
           </div>
           <div style={{ fontSize: 14, color: colors.card.translation }}>
-            {card.translation}
+            {card.translations?.[0]}
           </div>
           <div style={{ marginTop: 12, display: "flex", gap: 6 }}>
             <button
               onMouseEnter={() => setStarHovered(true)}
               onMouseLeave={() => setStarHovered(false)}
               onClick={async () => {
-                if (!card || wordStatus?.isActive || (card.word.includes(' ') && card.translation?.includes(' ')) || starSaving) return;
+                if (!card || wordStatus?.isActive || (card.word.includes(' ') && card.translations?.[0]?.includes(' ')) || starSaving) return;
                 setStarSaving(true);
                 const res = await fetch('/api/vocabulary/active', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ word: card.word, translation: card.translation, sourceLang, targetLang }),
+                  body: JSON.stringify({ word: card.word, translation: card.translations?.[0], sourceLang, targetLang }),
                 });
                 setStarSaving(false);
                 if (res.ok) setWordStatus({ inVocab: true, isActive: true });
@@ -1376,7 +1377,7 @@ export default function PdfReader() {
                 background: "none",
                 border: `1px solid ${colors.card.border}`,
                 borderRadius: 4,
-                cursor: card && !wordStatus?.isActive && !(card.word.includes(' ') && card.translation?.includes(' ')) && !starSaving ? "pointer" : "default",
+                cursor: card && !wordStatus?.isActive && !(card.word.includes(' ') && card.translations?.[0]?.includes(' ')) && !starSaving ? "pointer" : "default",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -1395,12 +1396,12 @@ export default function PdfReader() {
               onMouseEnter={() => setBookHovered(true)}
               onMouseLeave={() => setBookHovered(false)}
               onClick={async () => {
-                if (!card || wordStatus?.inVocab || (card.word.includes(' ') && card.translation?.includes(' ')) || bookSaving) return;
+                if (!card || wordStatus?.inVocab || (card.word.includes(' ') && card.translations?.[0]?.includes(' ')) || bookSaving) return;
                 setBookSaving(true);
                 const res = await fetch('/api/vocabulary', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ word: card.word, translation: card.translation, sourceLang, targetLang }),
+                  body: JSON.stringify({ word: card.word, translation: card.translations?.[0], sourceLang, targetLang }),
                 });
                 setBookSaving(false);
                 if (res.ok) setWordStatus(prev => ({ ...prev, inVocab: true }));
@@ -1411,7 +1412,7 @@ export default function PdfReader() {
                 background: "none",
                 border: `1px solid ${colors.card.border}`,
                 borderRadius: 4,
-                cursor: card && !wordStatus?.inVocab && !(card.word.includes(' ') && card.translation?.includes(' ')) && !bookSaving ? "pointer" : "default",
+                cursor: card && !wordStatus?.inVocab && !(card.word.includes(' ') && card.translations?.[0]?.includes(' ')) && !bookSaving ? "pointer" : "default",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",

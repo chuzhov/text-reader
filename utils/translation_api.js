@@ -4,7 +4,7 @@ const CONTEXT_SPAN_WORDS = 12;
  * Collects up to CONTEXT_SPAN_WORDS words before and after the clicked word,
  * spanning page boundaries when the word is near a page edge.
  */
-export function extractContext(pages, pageNum, wordIndex) {
+export function extractContext(pages, pageNum, wordIndex, clickedWord) {
   const pageIdx = pages.findIndex(p => p.pageNum === pageNum);
   if (pageIdx === -1) return { before: '', after: '' };
 
@@ -38,7 +38,21 @@ export function extractContext(pages, pageNum, wordIndex) {
     }
   }
 
-  return { before: beforeWords.join(' '), after: afterWords.join(' ') };
+  // Include the parts of the current line-span that fall before/after the clicked word
+  if (clickedWord) {
+    const lineTokens = (words[wordIndex]?.text ?? '').split(' ');
+    const idx = lineTokens.findIndex(t => t.replace(/[.,;:!?"'…]+$/, '') === clickedWord);
+    if (idx !== -1) {
+      const lineBefore = lineTokens.slice(0, idx).join(' ');
+      const lineAfter = lineTokens.slice(idx + 1).join(' ');
+      if (lineBefore) beforeWords.push(lineBefore);
+      if (lineAfter) afterWords.unshift(lineAfter);
+    }
+  }
+
+  const before = beforeWords.join(' ').split(' ').slice(-12).join(' ');
+  const after = afterWords.join(' ').split(' ').slice(0, 12).join(' ');
+  return { before, after };
 }
 
 export async function translateWord(word, sourceLang, context = {}) {
@@ -48,7 +62,7 @@ export async function translateWord(word, sourceLang, context = {}) {
     body: JSON.stringify({ text: word, sourceLang, targetLang: 'ru', context }),
   });
   const data = await res.json();
-  return data.translation;
+  return data.translations;
 }
 
 export async function getCefrFromAI(word, sourceLang) {
