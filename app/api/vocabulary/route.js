@@ -7,11 +7,21 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const words = await prisma.word.findMany({
-    where: { userId: Number(session.user.id) },
+  const raw = await prisma.word.findMany({
+    where: { userId: Number(session.user.id), isHidden: false },
     orderBy: { addedAt: 'desc' },
   });
-  return NextResponse.json({ words });
+  const words = raw.map(w => ({
+    id: w.id,
+    word: w.word,
+    translation: w.translation,
+    sourceLang: w.sourceLang,
+    targetLang: w.targetLang,
+    cefrLevel: w.cefrLevel ?? null,
+  }));
+  const sourceLangs = [...new Set(words.map(w => w.sourceLang))].sort();
+  const targetLangs = [...new Set(words.map(w => w.targetLang))].sort();
+  return NextResponse.json({ words, sourceLangs, targetLangs });
 }
 
 export async function POST(request) {

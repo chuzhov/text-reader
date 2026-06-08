@@ -7,6 +7,7 @@ import { translateWord, getCefrFromAI, extractContext } from "@/utils/translatio
 import { getCefrLevel } from "@/utils/cefr";
 import { colors } from "@/utils/theme";
 import ActiveDictPanel from "@/components/ActiveDictPanel";
+import GeneralDictPanel from "@/components/GeneralDictPanel";
 
 function getSelectedText() {
   return window.getSelection()?.toString().trim() || '';
@@ -164,11 +165,16 @@ export default function PdfReader() {
   const [activeDictWords, setActiveDictWords] = useState([]);
   const [activeDictSourceLangs, setActiveDictSourceLangs] = useState([]);
   const [activeDictTargetLangs, setActiveDictTargetLangs] = useState([]);
+  const [showGeneralDictPanel, setShowGeneralDictPanel] = useState(false);
+  const [generalDictWords, setGeneralDictWords] = useState([]);
+  const [generalDictSourceLangs, setGeneralDictSourceLangs] = useState([]);
+  const [generalDictTargetLangs, setGeneralDictTargetLangs] = useState([]);
   const [scrollbarWidth, setScrollbarWidth] = useState(17);
 
   // Hover states
   const [bookshelfHovered, setBookshelfHovered] = useState(false);
   const [activeDictHovered, setActiveDictHovered] = useState(false);
+  const [generalDictHovered, setGeneralDictHovered] = useState(false);
   const [starHovered, setStarHovered] = useState(false);
   const [bookHovered, setBookHovered] = useState(false);
   const [sourceLangHovered, setSourceLangHovered] = useState(false);
@@ -857,6 +863,7 @@ export default function PdfReader() {
           onMouseLeave={() => setActiveDictHovered(false)}
           onClick={async () => {
             if (showActiveDictPanel) { setShowActiveDictPanel(false); return; }
+            setShowGeneralDictPanel(false);
             const res = await fetch('/api/vocabulary/active');
             const data = res.ok ? await res.json() : { words: [], sourceLangs: [], targetLangs: [] };
             setActiveDictWords(data.words || []);
@@ -881,6 +888,43 @@ export default function PdfReader() {
             style={{ color: activeDictHovered || showActiveDictPanel ? colors.icon.hover : colors.icon.default }}
           >
             <path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/>
+          </svg>
+        </button>
+        {/* General Dictionary toggle */}
+        <button
+          onMouseEnter={() => setGeneralDictHovered(true)}
+          onMouseLeave={() => setGeneralDictHovered(false)}
+          onClick={async () => {
+            if (showGeneralDictPanel) { setShowGeneralDictPanel(false); return; }
+            setShowActiveDictPanel(false);
+            const res = await fetch('/api/vocabulary');
+            const data = res.ok ? await res.json() : { words: [], sourceLangs: [], targetLangs: [] };
+            setGeneralDictWords(data.words || []);
+            setGeneralDictSourceLangs(data.sourceLangs || []);
+            setGeneralDictTargetLangs(data.targetLangs || []);
+            setShowGeneralDictPanel(true);
+          }}
+          style={{
+            background: showGeneralDictPanel ? colors.app.background : "none",
+            border: "none",
+            padding: "2px 0",
+            cursor: "pointer",
+            borderRadius: 6,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24"
+            fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            style={{ color: generalDictHovered || showGeneralDictPanel ? colors.icon.hover : colors.icon.default }}
+          >
+            <path d="M12 7v14"/>
+            <path d="M16 12h2"/>
+            <path d="M16 8h2"/>
+            <path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>
+            <path d="M6 12h2"/>
+            <path d="M6 8h2"/>
           </svg>
         </button>
       </div>
@@ -1092,6 +1136,18 @@ export default function PdfReader() {
       />
     )}
 
+    {/* General Dictionary panel */}
+    {showGeneralDictPanel && (
+      <GeneralDictPanel
+        words={generalDictWords}
+        sourceLangs={generalDictSourceLangs}
+        targetLangs={generalDictTargetLangs}
+        defaultSource={pdfPath ? sourceLang : "en"}
+        defaultTarget={pdfPath ? targetLang : "ru"}
+        onClose={() => setShowGeneralDictPanel(false)}
+      />
+    )}
+
     {/* ToC panel */}
     {showTocPanel && outline.length > 0 && (
       <div
@@ -1206,7 +1262,7 @@ export default function PdfReader() {
         width: "100%",
         maxWidth: pages.length > 0 ? pages[0].width + 16 + scrollbarWidth : undefined,
         margin: "0 auto",
-        overflowY: showActiveDictPanel ? "hidden" : (pages.length > 0 ? "auto" : "hidden"),
+        overflowY: (showActiveDictPanel || showGeneralDictPanel) ? "hidden" : (pages.length > 0 ? "auto" : "hidden"),
         overflowX: "auto",
       }}
     >
