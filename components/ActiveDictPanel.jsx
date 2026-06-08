@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { colors } from "@/utils/theme";
-import { getCefrLevel } from "@/utils/cefr";
 
 const LANG_LABELS = {
   en: "English", ru: "Russian", fr: "French", de: "German", es: "Spanish",
@@ -164,7 +163,7 @@ export default function ActiveDictPanel({
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <tbody>
               {filtered.map((w, i) => {
-                const cefr = getCefrLevel(w.word, selectedSource);
+                const cefr = w.cefrLevel;
                 const isRowHovered = hoveredRow === i;
                 return (
                   <tr

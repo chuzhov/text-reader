@@ -34,6 +34,7 @@ model Word {
   translation String
   sourceLang  String
   targetLang  String
+  cefrLevel   String?
   isHidden    Boolean      @default(false)
   addedAt     DateTime     @default(now())
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)

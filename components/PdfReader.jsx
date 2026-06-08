@@ -1366,7 +1366,7 @@ export default function PdfReader() {
                 const res = await fetch('/api/vocabulary/active', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ word: card.word, translation: card.translations?.[0], sourceLang, targetLang }),
+                  body: JSON.stringify({ word: card.word, translation: card.translations?.[0], sourceLang, targetLang, cefrLevel: card.cefrLevel ?? null }),
                 });
                 setStarSaving(false);
                 if (res.ok) setWordStatus({ inVocab: true, isActive: true });
@@ -1401,7 +1401,7 @@ export default function PdfReader() {
                 const res = await fetch('/api/vocabulary', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ word: card.word, translation: card.translations?.[0], sourceLang, targetLang }),
+                  body: JSON.stringify({ word: card.word, translation: card.translations?.[0], sourceLang, targetLang, cefrLevel: card.cefrLevel ?? null }),
                 });
                 setBookSaving(false);
                 if (res.ok) setWordStatus(prev => ({ ...prev, inVocab: true }));

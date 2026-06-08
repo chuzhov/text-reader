@@ -18,6 +18,7 @@ export async function GET() {
     translation: aw.word.translation,
     sourceLang: aw.word.sourceLang,
     targetLang: aw.word.targetLang,
+    cefrLevel: aw.word.cefrLevel ?? null,
   }));
   const sourceLangs = [...new Set(words.map(w => w.sourceLang))].sort();
   const targetLangs = [...new Set(words.map(w => w.targetLang))].sort();
@@ -28,13 +29,13 @@ export async function POST(request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const { word, translation, sourceLang, targetLang } = await request.json();
+  const { word, translation, sourceLang, targetLang, cefrLevel = null } = await request.json();
   const userId = Number(session.user.id);
 
   const savedWord = await prisma.word.upsert({
     where: { userId_word_sourceLang: { userId, word, sourceLang } },
-    update: { translation },
-    create: { userId, word, translation, sourceLang, targetLang },
+    update: { translation, cefrLevel },
+    create: { userId, word, translation, sourceLang, targetLang, cefrLevel },
   });
 
   const active = await prisma.activeWord.upsert({
