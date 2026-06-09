@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { colors } from "@/utils/theme";
 
 const LANG_LABELS = {
@@ -25,6 +25,8 @@ export default function GeneralDictPanel({
   );
   const [hoveredRow, setHoveredRow] = useState(null);
   const [hoveredBtn, setHoveredBtn] = useState(null);
+  const [hoveredLetter, setHoveredLetter] = useState(null);
+  const scrollContainerRef = useRef(null);
 
   const filtered = useMemo(() =>
     words
@@ -33,6 +35,18 @@ export default function GeneralDictPanel({
     [words, selectedSource, selectedTarget, sortMode]
   );
 
+  const letterGroups = useMemo(() => {
+    if (sortMode !== "alpha") return {};
+    const groups = {};
+    filtered.forEach((w, i) => {
+      const letter = w.word[0]?.toUpperCase() ?? '#';
+      if (!(letter in groups)) groups[letter] = i;
+    });
+    return groups;
+  }, [filtered, sortMode]);
+
+  const uniqueLetters = useMemo(() => Object.keys(letterGroups).sort(), [letterGroups]);
+
   const maxWordPx = useMemo(() => {
     if (filtered.length === 0 || typeof document === 'undefined') return 0;
     const canvas = document.createElement('canvas');
@@ -40,6 +54,11 @@ export default function GeneralDictPanel({
     ctx.font = '14px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
     return Math.max(...filtered.map(w => Math.ceil(ctx.measureText(w.word).width)));
   }, [filtered]);
+
+  function scrollToLetter(letter) {
+    const el = scrollContainerRef.current?.querySelector(`[data-letter-anchor="${letter}"]`);
+    el?.scrollIntoView({ block: 'nearest' });
+  }
 
   const selectStyle = {
     fontSize: 12,
@@ -146,7 +165,7 @@ export default function GeneralDictPanel({
       </div>
 
       {/* Word list */}
-      <div style={{ overflowY: "auto", flex: 1 }}>
+      <div ref={scrollContainerRef} style={{ overflowY: "auto", flex: 1 }}>
         {filtered.length === 0 ? (
           <div style={{
             padding: "32px 16px",
@@ -159,65 +178,111 @@ export default function GeneralDictPanel({
               : "No saved words for this language pair."}
           </div>
         ) : (
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <tbody>
-              {filtered.map((w, i) => {
-                const cefr = w.cefrLevel;
-                const isRowHovered = hoveredRow === i;
-                return (
-                  <tr
-                    key={w.id}
-                    onMouseEnter={() => setHoveredRow(i)}
-                    onMouseLeave={() => { setHoveredRow(null); setHoveredBtn(null); }}
+          <>
+            {/* Alphabet index row */}
+            {sortMode === "alpha" && uniqueLetters.length > 0 && (
+              <div style={{
+                position: "sticky",
+                top: 0,
+                background: colors.card.background,
+                borderBottom: `1px solid ${colors.card.border}`,
+                padding: "5px 14px",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 2,
+                zIndex: 1,
+              }}>
+                {uniqueLetters.map(letter => (
+                  <button
+                    key={letter}
+                    onClick={() => scrollToLetter(letter)}
+                    onMouseEnter={() => setHoveredLetter(letter)}
+                    onMouseLeave={() => setHoveredLetter(null)}
                     style={{
-                      borderBottom: i < filtered.length - 1 ? `1px solid ${colors.card.border}` : "none",
-                      background: isRowHovered ? colors.filePanel.itemHoverBg : "transparent",
+                      background: "none",
+                      border: "none",
+                      padding: "1px 4px",
+                      cursor: "pointer",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      borderRadius: 3,
+                      color: hoveredLetter === letter ? colors.icon.hover : colors.icon.default,
                     }}
                   >
-                    <td style={{ padding: "8px 4px 8px 14px", fontSize: 12, color: colors.icon.default, textAlign: "right", whiteSpace: "nowrap", width: 1 }}>
-                      {i + 1}.
-                    </td>
-                    <td style={{ padding: "8px 8px 8px 6px", width: 48, verticalAlign: "middle" }}>
-                      {cefr && (
-                        <span style={{ background: colors.cefr[cefr], color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, letterSpacing: 0.5 }}>
-                          {cefr}
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ padding: "8px 14px 8px 0" }}>
-                      <div style={{ display: "flex", alignItems: "center" }}>
-                        <span style={{ minWidth: maxWordPx + 8, fontSize: 14, color: "#111" }}>
-                          {w.word}
-                        </span>
-                        <div style={{ display: "flex", gap: 4, visibility: isRowHovered ? "visible" : "hidden" }}>
-                          <button
-                            onMouseEnter={() => setHoveredBtn({ row: i, btn: 'speaker' })}
-                            onMouseLeave={() => setHoveredBtn(null)}
-                            onClick={() => {
-                              if (typeof speechSynthesis === 'undefined') return;
-                              speechSynthesis.cancel();
-                              const utter = new SpeechSynthesisUtterance(w.word);
-                              utter.lang = selectedSource;
-                              speechSynthesis.speak(utter);
-                            }}
-                            title="Pronounce"
-                            style={actionBtnStyle(i, 'speaker')}
-                          >
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M19 6C20.5 7.5 21 10 21 12C21 14 20.5 16.5 19 18M16 8.99998C16.5 9.49998 17 10.5 17 12C17 13.5 16.5 14.5 16 15M3 10.5V13.5C3 14.6046 3.5 15.5 5.5 16C7.5 16.5 9 21 12 21C14 21 14 3 12 3C9 3 7.5 7.5 5.5 8C3.5 8.5 3 9.39543 3 10.5Z"/>
-                            </svg>
-                          </button>
+                    {letter}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <tbody>
+                {filtered.map((w, i) => {
+                  const cefr = w.cefrLevel;
+                  const isRowHovered = hoveredRow === i;
+                  const firstLetter = w.word[0]?.toUpperCase() ?? '#';
+                  const isLetterStart = sortMode === "alpha" && letterGroups[firstLetter] === i;
+                  return (
+                    <tr
+                      key={w.id}
+                      data-letter-anchor={isLetterStart ? firstLetter : undefined}
+                      onMouseEnter={() => setHoveredRow(i)}
+                      onMouseLeave={() => { setHoveredRow(null); setHoveredBtn(null); }}
+                      style={{
+                        borderBottom: i < filtered.length - 1 ? `1px solid ${colors.card.border}` : "none",
+                        background: isRowHovered ? colors.filePanel.itemHoverBg : "transparent",
+                      }}
+                    >
+                      <td style={{ padding: "8px 8px", fontSize: 12, color: colors.icon.default, textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
+                        {sortMode === "alpha"
+                          ? isLetterStart
+                            ? <span style={{ fontSize: 11, fontWeight: 600, color: colors.icon.default }}>{firstLetter}</span>
+                            : <span style={{ display: "inline-block", width: 3, height: 3, background: colors.icon.default, verticalAlign: "middle" }} />
+                          : `${i + 1}.`
+                        }
+                      </td>
+                      <td style={{ padding: "8px 8px 8px 6px", width: 48, verticalAlign: "middle", textAlign: "center" }}>
+                        {cefr && (
+                          <span style={{ background: colors.cefr[cefr], color: "#fff", fontSize: 10, fontWeight: 700, padding: "2px 6px", borderRadius: 4, letterSpacing: 0.5 }}>
+                            {cefr}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ padding: "8px 14px 8px 0" }}>
+                        <div style={{ display: "flex", alignItems: "center" }}>
+                          <span style={{ minWidth: maxWordPx + 8, fontSize: 14, color: "#111" }}>
+                            {w.word}
+                          </span>
+                          <div style={{ display: "flex", gap: 4, visibility: isRowHovered ? "visible" : "hidden" }}>
+                            <button
+                              onMouseEnter={() => setHoveredBtn({ row: i, btn: 'speaker' })}
+                              onMouseLeave={() => setHoveredBtn(null)}
+                              onClick={() => {
+                                if (typeof speechSynthesis === 'undefined') return;
+                                speechSynthesis.cancel();
+                                const utter = new SpeechSynthesisUtterance(w.word);
+                                utter.lang = selectedSource;
+                                speechSynthesis.speak(utter);
+                              }}
+                              title="Pronounce"
+                              style={actionBtnStyle(i, 'speaker')}
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M19 6C20.5 7.5 21 10 21 12C21 14 20.5 16.5 19 18M16 8.99998C16.5 9.49998 17 10.5 17 12C17 13.5 16.5 14.5 16 15M3 10.5V13.5C3 14.6046 3.5 15.5 5.5 16C7.5 16.5 9 21 12 21C14 21 14 3 12 3C9 3 7.5 7.5 5.5 8C3.5 8.5 3 9.39543 3 10.5Z"/>
+                              </svg>
+                            </button>
+                          </div>
+                          <span style={{ marginLeft: 8, fontSize: 13, color: "#6b7280" }}>
+                            {w.translation}
+                          </span>
                         </div>
-                        <span style={{ marginLeft: 8, fontSize: 13, color: "#6b7280" }}>
-                          {w.translation}
-                        </span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </>
         )}
       </div>
     </div>
