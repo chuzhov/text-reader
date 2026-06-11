@@ -7,10 +7,18 @@ export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
-  const raw = await prisma.word.findMany({
-    where: { userId: Number(session.user.id), isHidden: false },
-    orderBy: { addedAt: 'desc' },
-  });
+  const userId = Number(session.user.id);
+  const [raw, activeWords] = await Promise.all([
+    prisma.word.findMany({
+      where: { userId, isHidden: false },
+      orderBy: { addedAt: 'desc' },
+    }),
+    prisma.activeWord.findMany({
+      where: { userId, isHidden: false },
+      select: { wordId: true },
+    }),
+  ]);
+  const activeIds = new Set(activeWords.map(aw => aw.wordId));
   const words = raw.map(w => ({
     id: w.id,
     word: w.word,
@@ -18,6 +26,7 @@ export async function GET() {
     sourceLang: w.sourceLang,
     targetLang: w.targetLang,
     cefrLevel: w.cefrLevel ?? null,
+    isActive: activeIds.has(w.id),
   }));
   const sourceLangs = [...new Set(words.map(w => w.sourceLang))].sort();
   const targetLangs = [...new Set(words.map(w => w.targetLang))].sort();
@@ -38,4 +47,16 @@ export async function POST(request) {
   });
 
   return NextResponse.json({ word: saved });
+}
+
+export async function DELETE(request) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { wordId } = await request.json();
+  await prisma.word.update({
+    where: { id: Number(wordId) },
+    data: { isHidden: true },
+  });
+  return NextResponse.json({ success: true });
 }

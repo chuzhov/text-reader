@@ -1145,6 +1145,22 @@ export default function PdfReader() {
         defaultSource={pdfPath ? sourceLang : "en"}
         defaultTarget={pdfPath ? targetLang : "ru"}
         onClose={() => setShowGeneralDictPanel(false)}
+        onRemoveWord={async (wordId) => {
+          await fetch('/api/vocabulary', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ wordId }),
+          });
+          setGeneralDictWords(prev => prev.filter(w => w.id !== wordId));
+        }}
+        onAddToActive={async (word) => {
+          await fetch('/api/vocabulary/active', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ word: word.word, translation: word.translation, sourceLang: word.sourceLang, targetLang: word.targetLang, cefrLevel: word.cefrLevel ?? null }),
+          });
+          setGeneralDictWords(prev => prev.map(w => w.id === word.id ? { ...w, isActive: true } : w));
+        }}
       />
     )}
 
