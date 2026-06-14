@@ -34,7 +34,7 @@ export async function POST(request) {
       });
     }
 
-    return NextResponse.json({ translations: result.translations });
+    return NextResponse.json({ translations: result.translations, correctedWord: result.correctedWord ?? null });
   } catch {
     return NextResponse.json({ translations: [text] });
   }

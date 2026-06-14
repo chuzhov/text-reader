@@ -62,7 +62,7 @@ export async function translateWord(word, sourceLang, context = {}) {
     body: JSON.stringify({ text: word, sourceLang, targetLang: 'ru', context }),
   });
   const data = await res.json();
-  return data.translations;
+  return { translations: data.translations, correctedWord: data.correctedWord ?? null };
 }
 
 export async function getCefrFromAI(word, sourceLang) {

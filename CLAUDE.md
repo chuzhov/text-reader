@@ -12,6 +12,7 @@ npx prisma migrate dev   # Apply migrations (does NOT regenerate the client in P
 npx prisma generate      # Regenerate client after schema changes — always run after migrate
 npx prisma db seed       # Seed test user (testuser@email.com / 12345678)
 npx prisma studio        # GUI for the SQLite database
+node scripts/backfill-cefr.mjs  # One-time: populate cefrLevel on existing Word rows from local cefr.json
 ```
 
 **Prisma non-interactive caveat:** `prisma migrate dev` requires a TTY and will fail in Claude Code's terminal. Ask the user to run it locally, then run `npx prisma generate` to sync the client after the migration is applied.
@@ -81,6 +82,22 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - `activeDictWords` — `[{ id, word, translation, sourceLang, targetLang }]` loaded from `GET /api/vocabulary/active` each time the panel opens
 - `activeDictSourceLangs` / `activeDictTargetLangs` — unique language code arrays derived from the fetched words; passed to `ActiveDictPanel` as selectable filter options
 - `activeDictHovered` — hover state for the star sidebar button
+- `showGeneralDictPanel` — whether the General Dictionary panel is open; also locks book scroll via `overflowY: "hidden"`
+- `generalDictWords` — `[{ id, word, translation, sourceLang, targetLang, cefrLevel, isActive }]` loaded from `GET /api/vocabulary` each time the panel opens; `isActive` is derived server-side by joining against `ActiveWord`
+- `generalDictSourceLangs` / `generalDictTargetLangs` — unique language code arrays derived from the fetched words
+- `generalDictHovered` — hover state for the General Dictionary sidebar button
+
+**General Dictionary panel** (`components/GeneralDictPanel.jsx`):
+- Fixed overlay at `top: 56, left: 56, right: 56`; same position as the Active Dictionary panel (the two panels are mutually exclusive — opening one closes the other)
+- Toggled by a book-with-spine SVG button in the left sidebar, below the Active Dictionary star button
+- **Language filter row:** source `<select>` + `>` separator + target `<select>`; a `1px` vertical divider; sort toggle pill (calendar icon = date order, A-Z icon = alpha order)
+- **Sort modes:** `"alpha"` (default, `localeCompare`) or `"date"` (preserves `addedAt desc` order from API)
+- **Alphabet index:** in alpha sort, a sticky row of letter buttons appears below the filter bar; clicking a letter scrolls to the first word starting with that letter via `scrollToLetter` (looks up `[data-letter-anchor="X"]` in the scroll container ref); the first column of each row shows the letter for the first entry of each group, or a small dot for subsequent entries; in date sort the first column shows a row number
+- **Word list:** `<table>` with three columns per row — letter/index cell (`width:1`), CEFR badge (fixed `width:48`), and a flex row with: word span (`minWidth: maxWordPx + 8`), action buttons, inline translation
+- **Hover actions:** `visibility: hidden/visible` keeps space reserved; on row hover, speaker button (SpeechSynthesis, `utter.lang = selectedSource`) and a three-dots menu button appear
+- **Three-dots context menu** (`openMenu` state `{ rowIndex, word, x, y }`): positioned dropdown anchored to the button; positions itself above if insufficient space below; contains "Add to Active Dictionary" (disabled + star filled when already active) and "Remove from Dictionary" (red, hidden when word is already active); clicks outside close the menu via a `mousedown` listener; `menuActionLoading` tracks the in-flight action
+- `onRemoveWord(id)` — calls `DELETE /api/vocabulary` + filters local `generalDictWords` state in `PdfReader`
+- `onAddToActive(word)` — calls `POST /api/vocabulary/active` + sets `isActive: true` on the matching entry in `generalDictWords`
 
 **Active Dictionary panel** (`components/ActiveDictPanel.jsx`):
 - Fixed overlay at `top: 56, left: 56, right: 56`; header background matches `colors.sidebar.background`
@@ -172,8 +189,9 @@ When adding a new UI element, add a new namespace rather than mixing tokens into
 **API routes** (all require a valid session except `/api/auth/*`):
 - `POST /api/auth/register` — create account; hashes password with bcrypt, creates default `UserSettings`
 - `POST /api/visit/ping` — updates `lastVisitedAt` for the current visit using `session.user.visitId`
-- `GET /api/vocabulary` — list user's saved words ordered by `addedAt` desc
+- `GET /api/vocabulary` — returns `{ words, sourceLangs, targetLangs }`; each word includes `cefrLevel` and `isActive` (joined against `ActiveWord`); ordered by `addedAt` desc
 - `POST /api/vocabulary` — upsert a word into the user's vocabulary (general vocab only)
+- `DELETE /api/vocabulary` — soft-hide a word from the general vocabulary; body: `{ wordId }`
 - `GET /api/vocabulary/check?word=X&sourceLang=Y` — returns `{ inVocab, isActive }` for the current user; filters `isHidden: false` on both tables; called in parallel with translation when a single word is clicked
 - `POST /api/vocabulary/active` — upsert word + mark it active (adds to both general and active vocab)
 - `DELETE /api/vocabulary/active` — remove a word from active study list
@@ -182,6 +200,7 @@ When adding a new UI element, add a new namespace rather than mixing tokens into
 - `GET /api/files/[id]/content` — stream a PDF file from `uploads/` with auth + ownership check
 - `PATCH /api/files/[id]/open` — stamp `lastOpenedAt` to now (called when a file is opened)
 - `PATCH /api/files/[id]/scroll` — save `scrollOffset` (integer px) without touching `lastOpenedAt`
+- `POST /api/cefr` — fetch CEFR level for a word from the AI; body: `{ word, sourceLang }`; returns `{ cefrLevel, source }`; logs the call if a session is present
 
 **Session shape** (extended by JWT callbacks):
 ```js

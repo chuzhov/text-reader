@@ -544,7 +544,7 @@ export default function PdfReader() {
       setCard(null);
       setWordStatus(null);
       setLoadingPos({ x: selRect.left, y: selRect.bottom + 8 });
-      const translations = await translateWord(selectedText, sourceLang);
+      const { translations } = await translateWord(selectedText, sourceLang);
       setLoadingPos(null);
       const status = translations?.[0] && !translations[0].includes(' ')
         ? await fetch(`/api/vocabulary/check?word=${encodeURIComponent(selectedText)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null)
@@ -570,19 +570,20 @@ export default function PdfReader() {
     setWordStatus(null);
     setLoadingPos({ x: e.clientX, y: rect.bottom + 8 });
 
-    const [translations, status] = await Promise.all([
+    const [{ translations, correctedWord }, status] = await Promise.all([
       translateWord(word, sourceLang, context),
       fetch(`/api/vocabulary/check?word=${encodeURIComponent(word)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null),
     ]);
     setLoadingPos(null);
-    setCard({ word, translations, cefrLevel: null, ...cardPos });
+    setCard({ word, correctedWord, translations, cefrLevel: null, ...cardPos });
     setWordStatus(status);
 
-    const localCefr = getCefrLevel(word, sourceLang);
+    const lookupWord = correctedWord ?? word;
+    const localCefr = getCefrLevel(lookupWord, sourceLang);
     if (localCefr !== null) {
       setCard(prev => prev?.word === word ? { ...prev, cefrLevel: localCefr } : prev);
     } else {
-      getCefrFromAI(word, sourceLang).then(({ cefrLevel }) => {
+      getCefrFromAI(lookupWord, sourceLang).then(({ cefrLevel }) => {
         setCard(prev => prev?.word === word ? { ...prev, cefrLevel } : prev);
       });
     }
@@ -1133,6 +1134,29 @@ export default function PdfReader() {
           });
           setActiveDictWords(prev => prev.filter(w => w.id !== wordId));
         }}
+        onAddWord={async (word, wSourceLang, wTargetLang) => {
+          const { translations, correctedWord } = await translateWord(word, wSourceLang, {});
+          if (!translations || translations.length === 0) return null;
+          const translation = translations[0];
+          const wordToSave = correctedWord ?? word;
+          let cefrLevel = getCefrLevel(wordToSave, wSourceLang);
+          if (!cefrLevel) {
+            const ai = await getCefrFromAI(wordToSave, wSourceLang);
+            cefrLevel = ai.cefrLevel ?? null;
+          }
+          const res = await fetch('/api/vocabulary/active', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ word: wordToSave, translation, sourceLang: wSourceLang, targetLang: wTargetLang, cefrLevel }),
+          });
+          if (!res.ok) return null;
+          const data = await res.json();
+          const newWord = { id: data.word.id, word: wordToSave, translation, sourceLang: wSourceLang, targetLang: wTargetLang, cefrLevel };
+          setActiveDictWords(prev => [newWord, ...prev]);
+          setActiveDictSourceLangs(prev => prev.includes(wSourceLang) ? prev : [...prev, wSourceLang].sort());
+          setActiveDictTargetLangs(prev => prev.includes(wTargetLang) ? prev : [...prev, wTargetLang].sort());
+          return newWord;
+        }}
       />
     )}
 
@@ -1438,7 +1462,7 @@ export default function PdfReader() {
                 const res = await fetch('/api/vocabulary/active', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ word: card.word, translation: card.translations?.[0], sourceLang, targetLang, cefrLevel: card.cefrLevel ?? null }),
+                  body: JSON.stringify({ word: card.correctedWord ?? card.word, translation: card.translations?.[0], sourceLang, targetLang, cefrLevel: card.cefrLevel ?? null }),
                 });
                 setStarSaving(false);
                 if (res.ok) setWordStatus({ inVocab: true, isActive: true });
@@ -1473,7 +1497,7 @@ export default function PdfReader() {
                 const res = await fetch('/api/vocabulary', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ word: card.word, translation: card.translations?.[0], sourceLang, targetLang, cefrLevel: card.cefrLevel ?? null }),
+                  body: JSON.stringify({ word: card.correctedWord ?? card.word, translation: card.translations?.[0], sourceLang, targetLang, cefrLevel: card.cefrLevel ?? null }),
                 });
                 setBookSaving(false);
                 if (res.ok) setWordStatus(prev => ({ ...prev, inVocab: true }));

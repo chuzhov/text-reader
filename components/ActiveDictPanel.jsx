@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { colors } from "@/utils/theme";
 
 const LANG_LABELS = {
@@ -14,7 +14,7 @@ function langLabel(code) {
 }
 
 export default function ActiveDictPanel({
-  words, sourceLangs, targetLangs, defaultSource, defaultTarget, onClose, onRemoveWord,
+  words, sourceLangs, targetLangs, defaultSource, defaultTarget, onClose, onRemoveWord, onAddWord,
 }) {
   const [sortMode, setSortMode] = useState("date");
   const [selectedSource, setSelectedSource] = useState(
@@ -26,6 +26,47 @@ export default function ActiveDictPanel({
   const [hoveredRow, setHoveredRow] = useState(null);
   const [hoveredBtn, setHoveredBtn] = useState(null); // { row, btn: 'speaker'|'remove'|'confirm'|'cancel' }
   const [pendingRemove, setPendingRemove] = useState(null);
+  const [showAddBar, setShowAddBar] = useState(false);
+  const [addWord, setAddWord] = useState('');
+  const [addSourceLang, setAddSourceLang] = useState(defaultSource);
+  const [addTargetLang, setAddTargetLang] = useState(defaultTarget);
+  const [addLoading, setAddLoading] = useState(false);
+  const [addShake, setAddShake] = useState(false);
+  const [hoveredAddBtn, setHoveredAddBtn] = useState(null); // 'toggle' | 'submit' | 'cancel'
+  const addInputRef = useRef(null);
+
+  function sanitizeAddInput(val) {
+    let result = '';
+    for (const ch of val) {
+      if (/[\p{L}\p{N} ]/u.test(ch)) {
+        result += ch;
+      } else if (ch === '-' && /\p{L}/u.test(result)) {
+        result += ch;
+      }
+    }
+    return result;
+  }
+
+  useEffect(() => {
+    if (showAddBar) addInputRef.current?.focus();
+  }, [showAddBar]);
+
+  async function handleAdd() {
+    let word = addWord.trim();
+    if (word.length < 2 || addLoading) return;
+    if (addSourceLang === 'en' && /^to [^\s]+$/i.test(word)) word = word.slice(3);
+    setAddLoading(true);
+    setAddShake(false);
+    const result = await onAddWord(word, addSourceLang, addTargetLang);
+    setAddLoading(false);
+    if (result) {
+      setShowAddBar(false);
+      setAddWord('');
+    } else {
+      setAddShake(true);
+      setTimeout(() => setAddShake(false), 350);
+    }
+  }
 
   const filtered = useMemo(() =>
     words
@@ -123,6 +164,26 @@ export default function ActiveDictPanel({
             <option value={defaultTarget}>{langLabel(defaultTarget)}</option>
           )}
         </select>
+        <button
+          onMouseEnter={() => setHoveredAddBtn('toggle')}
+          onMouseLeave={() => setHoveredAddBtn(null)}
+          onClick={() => {
+            if (showAddBar) { setShowAddBar(false); setAddShake(false); return; }
+            setAddSourceLang(selectedSource);
+            setAddTargetLang(selectedTarget);
+            setAddWord('');
+            setAddShake(false);
+            setShowAddBar(true);
+          }}
+          title="Add word manually"
+          style={{ background: showAddBar ? colors.app.background : "none", border: "none", padding: 4, cursor: "pointer", display: "flex", alignItems: "center", borderRadius: 6, color: showAddBar || hoveredAddBtn === 'toggle' ? colors.icon.hover : colors.icon.default }}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="9"/>
+            <line x1="12" y1="8" x2="12" y2="16"/>
+            <line x1="8" y1="12" x2="16" y2="12"/>
+          </svg>
+        </button>
         <span style={{ width: 1, alignSelf: "stretch", background: colors.card.border, margin: "0 4px" }} />
         <div style={{ background: colors.app.background, borderRadius: 6, padding: 1, display: "flex", flexDirection: "row", gap: 1 }}>
           <button
@@ -145,6 +206,84 @@ export default function ActiveDictPanel({
           </button>
         </div>
       </div>
+
+      {/* Add word bar */}
+      {showAddBar && (
+        <div style={{
+          padding: "8px 14px",
+          borderBottom: `1px solid ${colors.card.border}`,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          flexShrink: 0,
+          flexWrap: "wrap",
+          background: colors.app.background,
+        }}>
+          <input
+            ref={addInputRef}
+            value={addWord}
+            onChange={e => { setAddWord(sanitizeAddInput(e.target.value)); }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleAdd();
+              else if (e.key === 'Escape') { setShowAddBar(false); setAddWord(''); }
+            }}
+            placeholder="Enter a word…"
+            disabled={addLoading}
+            className={addShake ? 'input-shake' : undefined}
+            style={{
+              flex: 1,
+              minWidth: 120,
+              fontSize: 13,
+              padding: "3px 8px",
+              border: `1px solid ${addShake ? '#dc2626' : colors.card.border}`,
+              borderRadius: 4,
+              outline: "none",
+              background: colors.card.background,
+              color: "#111827",
+            }}
+          />
+          {(() => {
+            const isDisabled = addLoading || addWord.trim().length < 2;
+            return (
+              <button
+                onMouseEnter={() => !isDisabled && setHoveredAddBtn('submit')}
+                onMouseLeave={() => setHoveredAddBtn(null)}
+                onClick={handleAdd}
+                disabled={isDisabled}
+                title="Translate and add"
+                style={{
+                  background: "none", border: "none", padding: "2px 4px",
+                  cursor: isDisabled ? "default" : "pointer",
+                  display: "flex", alignItems: "center",
+                  color: isDisabled ? colors.card.border : (hoveredAddBtn === 'submit' ? colors.icon.hover : colors.icon.default),
+                }}
+              >
+                {addLoading ? (
+                  <span className="pdf-spinner" style={{ width: 16, height: 16 }} />
+                ) : (
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="9"/>
+                    <line x1="12" y1="8" x2="12" y2="16"/>
+                    <line x1="8" y1="12" x2="16" y2="12"/>
+                  </svg>
+                )}
+              </button>
+            );
+          })()}
+          <button
+            onMouseEnter={() => setHoveredAddBtn('cancel')}
+            onMouseLeave={() => setHoveredAddBtn(null)}
+            onClick={() => { setShowAddBar(false); setAddShake(false); setAddWord(''); }}
+            title="Cancel"
+            style={{ background: "none", border: "none", padding: "2px 4px", cursor: "pointer", display: "flex", alignItems: "center", color: hoveredAddBtn === 'cancel' ? colors.icon.hover : colors.icon.default }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/>
+              <line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Word list */}
       <div style={{ overflowY: "auto", flex: 1 }}>
