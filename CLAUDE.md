@@ -98,6 +98,12 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - **Three-dots context menu** (`openMenu` state `{ rowIndex, word, x, y }`): positioned dropdown anchored to the button; positions itself above if insufficient space below; contains "Add to Active Dictionary" (disabled + star filled when already active) and "Remove from Dictionary" (red, hidden when word is already active); clicks outside close the menu via a `mousedown` listener; `menuActionLoading` tracks the in-flight action
 - `onRemoveWord(id)` — calls `DELETE /api/vocabulary` + filters local `generalDictWords` state in `PdfReader`
 - `onAddToActive(word)` — calls `POST /api/vocabulary/active` + sets `isActive: true` on the matching entry in `generalDictWords`
+- **Manual add bar** (6.2.2): filter row layout is `[source select] > [target select] [+ btn] | [sort pill]`; clicking `+` reveals an input row (no lang selects — inherits the filter row's selected langs); ESC or successful save dismisses it
+  - `sanitizeAddInput(val)` — allows `\p{L}`, `\p{N}`, space; allows `-` only if at least one letter already precedes it; runs on every `onChange` (covers paste)
+  - Submission blocked for < 2 characters; submit button disabled and non-hoverable until threshold met
+  - English source: `/^to [^\s]+$/i` strips the `"to "` prefix before saving (e.g. "to receive" → "receive")
+  - `onAddWord(word, sourceLang, targetLang)` prop (provided by PdfReader): calls `translateWord` → rejects if `translations` empty (Claude `isWord: false`) → rejects if `translation === word` (MyMemory passthrough guard) → uses `correctedWord ?? word` as saved form → resolves CEFR (local dict first, AI fallback) → POSTs to `/api/vocabulary` (general only, `isActive: false`) → prepends entry to `generalDictWords` and extends lang filter arrays
+  - State local to `GeneralDictPanel`: `showAddBar`, `addWord`, `addLoading`, `addShake`, `hoveredAddBtn`
 
 **Active Dictionary panel** (`components/ActiveDictPanel.jsx`):
 - Fixed overlay at `top: 56, left: 56, right: 56`; header background matches `colors.sidebar.background`
