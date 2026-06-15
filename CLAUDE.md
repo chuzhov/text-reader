@@ -31,7 +31,7 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 2. `utils/pdf_processor.js` uses pdfjs-dist to extract text items with transform matrix positions; also reads `dc:language` from PDF metadata (falls back to `"en"`). The worker is served from `/pdf.worker.min.js` (copied from `node_modules/pdfjs-dist/build/pdf.worker.min.js` to `public/` by the webpack build hook in `next.config.mjs` — no CDN dependency)
 3. `extractPdf` returns `{ pages, sourceLang, outline, title, author }` — `sourceLang` is the BCP-47 primary tag (e.g. `"en"`); `outline` is the resolved PDF bookmark tree (empty array if none); `title` and `author` are strings from PDF XMP/info metadata (`dc:title`/`dc:creator` or `info.Title`/`info.Author`), or `null` if absent
 4. Extracted words with absolute `{ x, y }` coordinates are rendered as `position: absolute` spans inside per-page containers
-5. On click, `translateWord(word, sourceLang, context)` POSTs to `/api/translate`; the server delegates to the configured provider (default: Claude) with surrounding context spans, falling back to MyMemory on error
+5. On click, `translateWord(word, sourceLang, context)` POSTs to `/api/translate`; the server delegates to the configured provider (default: Claude) with surrounding context spans, falling back to MyMemory on error; returns `{ translations, correctedWord }` — `correctedWord` is the typo-corrected spelling from Claude, or `null`; Claude also returns `isWord: false` for gibberish, causing empty `translations` to be returned
 
 **Translation service settings** (`lib/translation/config.js` — all overridable via env vars):
 | Env var | Default | Meaning |
@@ -59,7 +59,7 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - `pages` — `[{ pageNum, width, height, words: [{ text, x, y, fontSize?, linkPageNum?, isLinkEnd? }] }]`, set once per file load; `linkPageNum` and `isLinkEnd` are present only on words that fall inside a PDF link annotation
 - `sourceLang` — BCP-47 primary tag read from PDF metadata on load (e.g. `"en"`), passed to every translation call
 - `targetLang` — translation target language code (currently hardcoded `"ru"`); drives the target-lang button label in the right sidebar
-- `card` — `{ word, translation, cefrLevel, x, top, bottom }` or `null`; exactly one of `top`/`bottom` is a number, the other is `null` (CSS `bottom` used when card flips above the word to avoid height-estimation gap); `translation` is `null` while the API call is in flight (shows "Translating…"); `cefrLevel` is `null` for multi-word selections
+- `card` — `{ word, correctedWord, translation, cefrLevel, x, top, bottom }` or `null`; exactly one of `top`/`bottom` is a number, the other is `null` (CSS `bottom` used when card flips above the word to avoid height-estimation gap); `translation` is `null` while the API call is in flight (shows "Translating…"); `cefrLevel` is `null` for multi-word selections; `correctedWord` is the typo-corrected spelling returned by Claude (or `null` if the word was correct) — used instead of `word` when saving to vocab
 - `loadingPos` — `{ x, y }` or `null`; position of the loading spinner while translation is in flight; decoupled from `card`'s `top`/`bottom` (always uses `anchorRect.bottom + 8` as `y`)
 - `wordStatus` — `{ inVocab, isActive }` or `null`; fetched in parallel with translation via `GET /api/vocabulary/check` for single-word clicks only; `null` for multi-word selections and while loading
 - `starSaving` / `bookSaving` — `true` while the respective vocabulary save API call is in flight; shows a 16px spinner inside the button
@@ -108,6 +108,13 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - **Hover actions:** `visibility: hidden/visible` (not `display: none`) keeps button space reserved; on row hover, speaker button (SpeechSynthesis, `utter.lang = selectedSource`) and star-minus button appear
 - **Inline removal confirmation:** clicking star-minus sets `pendingRemove` to that row index — the speaker/star-minus pair is replaced by a checkmark and an X button; checkmark calls `onRemoveWord(w.id)` (issues `DELETE /api/vocabulary/active` and filters local state in `PdfReader`); X resets `pendingRemove`; the row stays highlighted via `pendingRemove === i` even without mouse hover
 - Both speaker and star-minus SVGs use `strokeWidth="2"`; star-minus has an extra `<line x1="9" y1="12.5" x2="15" y2="12.5"/>` for the minus mark
+- **Manual add bar** (5.3.1): filter row layout is `[source select] > [target select] [+ btn] | [sort pill]`; clicking `+` reveals an input row (no lang selects — inherits the filter row's selected langs); ESC or successful save dismisses it
+  - `sanitizeAddInput(val)` — allows `\p{L}`, `\p{N}`, space; allows `-` only if at least one letter already precedes it; runs on every `onChange` (covers paste)
+  - Submission blocked for < 2 characters; submit button disabled and non-hoverable until threshold met
+  - English source: `/^to [^\s]+$/i` strips the `"to "` prefix before saving (e.g. "to receive" → "receive")
+  - `onAddWord(word, sourceLang, targetLang)` prop (provided by PdfReader): calls `translateWord` → uses `correctedWord ?? word` as the saved form → resolves CEFR (local dict first, AI fallback) → POSTs to `/api/vocabulary/active` → prepends entry to `activeDictWords` and extends lang filter arrays
+  - Claude `isWord` guard: single-word translation prompt now returns `"isWord": true|false`; if `false`, empty translations are returned, `onAddWord` returns `null`, and the input shakes + turns red for 350 ms (`input-shake` keyframe in `globals.css`)
+  - State local to `ActiveDictPanel`: `showAddBar`, `addWord`, `addLoading`, `addShake`, `hoveredAddBtn`
 
 **Translation card placement** (`computeCardPos(anchorRect, xAnchor)` helper):
 - Horizontal: `x = clamp(e.clientX, 64, window.innerWidth - 280 - 48 - 8)`; the `64` left-clamp guards the left sidebar; the `48` right-offset guards the right sidebar; uses the actual click X (`e.clientX`) for single-word clicks so the card is close to the clicked word, not the span's left edge
@@ -118,6 +125,7 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - Book button — adds to general vocab (`POST /api/vocabulary`); highlighted (orange) when `wordStatus.inVocab`; no-op if already saved
 - Star button — adds to both general and active vocab (`POST /api/vocabulary/active`); highlighted when `wordStatus.isActive`; pressing star after book also lights up the book
 - Both buttons show a 16px spinner (`pdf-spinner` class) while the save is in flight, then switch to the highlighted icon on success
+- Both save buttons use `card.correctedWord ?? card.word` as the saved word — preserving typo-corrected spelling
 - Speaker button (word → speaker → CEFR badge order) — uses `SpeechSynthesis` API with `utter.lang = sourceLang`; single-word only; calls `speechSynthesis.cancel()` before speaking to interrupt any ongoing speech
 - Trailing punctuation (`.,;:!?"'…`) is stripped from the extracted word before translation, CEFR lookup, vocab check, and pronunciation
 

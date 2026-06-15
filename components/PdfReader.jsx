@@ -1138,6 +1138,7 @@ export default function PdfReader() {
           const { translations, correctedWord } = await translateWord(word, wSourceLang, {});
           if (!translations || translations.length === 0) return null;
           const translation = translations[0];
+          if (translation.trim().toLowerCase() === word.trim().toLowerCase()) return null;
           const wordToSave = correctedWord ?? word;
           let cefrLevel = getCefrLevel(wordToSave, wSourceLang);
           if (!cefrLevel) {
@@ -1184,6 +1185,30 @@ export default function PdfReader() {
             body: JSON.stringify({ word: word.word, translation: word.translation, sourceLang: word.sourceLang, targetLang: word.targetLang, cefrLevel: word.cefrLevel ?? null }),
           });
           setGeneralDictWords(prev => prev.map(w => w.id === word.id ? { ...w, isActive: true } : w));
+        }}
+        onAddWord={async (word, wSourceLang, wTargetLang) => {
+          const { translations, correctedWord } = await translateWord(word, wSourceLang, {});
+          if (!translations || translations.length === 0) return null;
+          const translation = translations[0];
+          if (translation.trim().toLowerCase() === word.trim().toLowerCase()) return null;
+          const wordToSave = correctedWord ?? word;
+          let cefrLevel = getCefrLevel(wordToSave, wSourceLang);
+          if (!cefrLevel) {
+            const ai = await getCefrFromAI(wordToSave, wSourceLang);
+            cefrLevel = ai.cefrLevel ?? null;
+          }
+          const res = await fetch('/api/vocabulary', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ word: wordToSave, translation, sourceLang: wSourceLang, targetLang: wTargetLang, cefrLevel }),
+          });
+          if (!res.ok) return null;
+          const data = await res.json();
+          const newWord = { id: data.word.id, word: wordToSave, translation, sourceLang: wSourceLang, targetLang: wTargetLang, cefrLevel, isActive: false };
+          setGeneralDictWords(prev => [newWord, ...prev]);
+          setGeneralDictSourceLangs(prev => prev.includes(wSourceLang) ? prev : [...prev, wSourceLang].sort());
+          setGeneralDictTargetLangs(prev => prev.includes(wTargetLang) ? prev : [...prev, wTargetLang].sort());
+          return newWord;
         }}
       />
     )}
