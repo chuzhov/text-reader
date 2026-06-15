@@ -88,7 +88,7 @@ const PageView = React.memo(function PageView({ page, isVisible, onWordClick, on
                 color: isLink ? colors.word.linkColor : undefined,
               }}
             >
-              {w.text}
+              {w.text}{' '}
               {w.isLinkIcon && (
                 <span
                   onClick={(e) => { e.stopPropagation(); onLinkClick(w.linkPageNum); }}
@@ -1295,7 +1295,7 @@ export default function PdfReader() {
           setCard(null);
           setWordStatus(null);
           setLoadingPos({ x: selRect.left, y: selRect.bottom + 8 });
-          translateWord(selectedText, sourceLang).then(async translations => {
+          translateWord(selectedText, sourceLang).then(async ({ translations }) => {
             setLoadingPos(null);
             const status = translations?.[0] && !translations[0].includes(' ')
               ? await fetch(`/api/vocabulary/check?word=${encodeURIComponent(selectedText)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null)
