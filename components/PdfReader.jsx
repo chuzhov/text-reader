@@ -804,7 +804,7 @@ export default function PdfReader() {
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, marginTop: 8 }}>
-        <div style={{
+        {pdfPath && <div style={{
           background: colors.sidebar.langGroup,
           borderRadius: 6,
           padding: 4,
@@ -857,7 +857,7 @@ export default function PdfReader() {
           >
             {targetLang[0].toUpperCase() + targetLang.slice(1)}
           </button>
-        </div>
+        </div>}
         {/* Active Dictionary toggle */}
         <button
           onMouseEnter={() => setActiveDictHovered(true)}
