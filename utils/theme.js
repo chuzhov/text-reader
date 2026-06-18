@@ -42,8 +42,8 @@ export const colors = {
     itemHoverBg: "#f5f5f5",
   },
   langSwitcher: {
-    auto: "#16a34a",
-    mismatch: "#f59e0b",
+    auto: "#22c55e",
+    error: "#dc2626",
   },
   menu: {
     separator: "#e5e7eb",

@@ -27,11 +27,11 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 
 **Data flow:**
 
-1. `components/PdfReader.jsx` mounts and fetches `GET /api/files`; if the user has files, calls `extractPdf("/api/files/{id}/content")` for the most recently opened one and restores its saved scroll position
-2. `utils/pdf_processor.js` uses pdfjs-dist to extract text items with transform matrix positions; also reads `dc:language` from PDF metadata (falls back to `"en"`). The worker is served from `/pdf.worker.min.js` (copied from `node_modules/pdfjs-dist/build/pdf.worker.min.js` to `public/` by the webpack build hook in `next.config.mjs` — no CDN dependency)
-3. `extractPdf` returns `{ pages, sourceLang, outline, title, author }` — `sourceLang` is the BCP-47 primary tag (e.g. `"en"`); `outline` is the resolved PDF bookmark tree (empty array if none); `title` and `author` are strings from PDF XMP/info metadata (`dc:title`/`dc:creator` or `info.Title`/`info.Author`), or `null` if absent
+1. `components/PdfReader.jsx` mounts and fetches `GET /api/settings` and `GET /api/files` in parallel; settings seed `userSettings` state and initial `targetLang`; if the user has files, `loadFile` is called for the most recently opened one (settings are passed directly to avoid stale closure on first load)
+2. `utils/pdf_processor.js` uses pdfjs-dist to extract text items with transform matrix positions; also reads `dc:language` from PDF metadata (falls back to `null` — absence is intentional so callers can distinguish "no metadata" from English). The worker is served from `/pdf.worker.min.js` (copied from `node_modules/pdfjs-dist/build/pdf.worker.min.js` to `public/` by the webpack build hook in `next.config.mjs` — no CDN dependency)
+3. `extractPdf` returns `{ pages, sourceLang, outline, title, author }` — `sourceLang` is the BCP-47 primary tag (e.g. `"en"`) or `null` if the PDF has no language metadata; `outline` is the resolved PDF bookmark tree (empty array if none); `title` and `author` are strings from PDF XMP/info metadata (`dc:title`/`dc:creator` or `info.Title`/`info.Author`), or `null` if absent
 4. Extracted words with absolute `{ x, y }` coordinates are rendered as `position: absolute` spans inside per-page containers
-5. On click, `translateWord(word, sourceLang, context)` POSTs to `/api/translate`; the server delegates to the configured provider (default: Claude) with surrounding context spans, falling back to MyMemory on error; returns `{ translations, correctedWord }` — `correctedWord` is the typo-corrected spelling from Claude, or `null`; Claude also returns `isWord: false` for gibberish, causing empty `translations` to be returned
+5. On click, `translateWord(word, sourceLang, context, targetLang)` POSTs to `/api/translate`; translation is **blocked** (early return) when `sourceLang === targetLangRef.current`; the server delegates to the configured provider (default: Claude) with surrounding context spans, falling back to MyMemory on error; returns `{ translations, correctedWord }` — `correctedWord` is the typo-corrected spelling from Claude, or `null`; Claude also returns `isWord: false` for gibberish, causing empty `translations` to be returned
 
 **Translation service settings** (`lib/translation/config.js` — all overridable via env vars):
 | Env var | Default | Meaning |
@@ -43,7 +43,16 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 | `CEFR_FROM_AI` | `true` | Ask Claude for CEFR when the local dict misses |
 | `LOG_AI_CALLS` | `true` | Append each AI call to `logs/{userId}.jsonl` |
 
-**Layout:** Two fixed 48px sidebars flank the main scroll area. Left sidebar (`left: 0`) holds reading operations (bookshelf, ToC, settings, user menu). Right sidebar (`right: 0`) holds translation options (source/target language pill). A fixed 48px header (`top: 0, left: 48, right: 48`) sits between the sidebars and shows the book title and author from PDF metadata (falls back to filename; author rendered with `·` separator in muted gray when present). Main scroll area uses `top: 48, left: 48, right: 48`. Both sidebars share `colors.sidebar.*`; use CSS classes `sb-left` / `sb-right` only when their styles diverge.
+**Layout:** Two fixed 48px sidebars flank the main scroll area. Left sidebar (`left: 0`) holds reading operations (bookshelf, ToC, settings, user menu). Right sidebar (`right: 0`) holds translation options (source/target language switcher — hidden entirely when no file is open). A fixed 48px header (`top: 0, left: 48, right: 48`) sits between the sidebars and shows the book title and author from PDF metadata (falls back to filename; author rendered with `·` separator in muted gray when present). Main scroll area uses `top: 48, left: 48, right: 48`. Both sidebars share `colors.sidebar.*`; use CSS classes `sb-left` / `sb-right` only when their styles diverge.
+
+**Language switcher** (right sidebar, visible only when `pdfPath !== null`):
+- Source and target language buttons are stacked in a `colors.sidebar.langGroup` pill; each button is 30×30px with a 1px border and 11px bold label
+- **Source button color states** (border + text): green (`colors.langSwitcher.auto`) when `detectedLang !== null && sourceLang === detectedLang`; red (`colors.langSwitcher.error`) when `detectedLang !== null && sourceLang !== detectedLang`; grey (`colors.icon.default`) when `detectedLang === null`
+- **Auto-detect indicator**: a 2px × 14px green bar (`colors.langSwitcher.auto`) is absolutely positioned at `bottom: 4px` inside the source button; `visibility: hidden` when not in auto-detect mode — keeps label perfectly centered at all times
+- **Same-language error**: when `sourceLang === targetLang`, the target button turns red (`colors.langSwitcher.error`), and word clicks are blocked entirely
+- **Tooltips**: dark `#1f2937` rectangle with a right-pointing CSS triangle (`▶`), appearing to the left of the button on hover; source button shows one of three messages based on detection state / same-lang; target button shows "Source and target languages must be different" only when `sameLang`
+- **Dropdowns**: `.menu-row` / `.menu-row-active` CSS classes (same style as ToC); container `padding: "4px 4px 4px 0"` for straight left bar; the "other" language (e.g. `targetLang` in the source menu) is placed last with a `colors.menu.separator` divider; close on outside click or ESC
+- Supported languages defined in `utils/supportedLanguages.js` (`SUPPORTED_LANGUAGES` array of `{ code, label }`) — currently EN, ES, FR, DE, IT, RU, UK
 
 **File storage:** Uploaded files are saved to `uploads/` at the project root (outside `public/`) and served via the authenticated `GET /api/files/[id]/content` route. Files must **not** be stored in `public/` — Next.js production only serves static files that existed at build time; dynamically-added files in `public/` return 404. The `uploads/` directory is in `.gitignore`.
 
@@ -57,8 +66,12 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 
 **State** (all local in `PdfReader`):
 - `pages` — `[{ pageNum, width, height, words: [{ text, x, y, fontSize?, linkPageNum?, isLinkEnd? }] }]`, set once per file load; `linkPageNum` and `isLinkEnd` are present only on words that fall inside a PDF link annotation
-- `sourceLang` — BCP-47 primary tag read from PDF metadata on load (e.g. `"en"`), passed to every translation call
-- `targetLang` — translation target language code (currently hardcoded `"ru"`); drives the target-lang button label in the right sidebar
+- `sourceLang` — effective translation source language; set on file load to `detectedLang ?? userSettings.sourceLang`; can be overridden by the user via the language switcher; passed to every translation call
+- `detectedLang` — raw BCP-47 primary tag from PDF metadata (`dc:language` / `info.Language`), or `null` if the PDF has no language metadata; set on file load; drives source button color markers and tooltip state
+- `userSettings` — `{ sourceLang, targetLang }` fetched from `GET /api/settings` on mount; used as fallback when `detectedLang === null` and passed directly to `loadFile` on first load to avoid stale closure
+- `targetLang` — translation target language; initialised from `userSettings.targetLang` on mount; mutable by the user via the language switcher; drives the target-lang button label
+- `targetLangRef` — `useRef` kept in sync with `targetLang` via `useEffect`; read inside `onWordClick` so the memoized callback always sees the current target language without adding `targetLang` to its `useCallback` deps (which would cause `PageView` re-renders on every lang change)
+- `sourceLangMenuOpen` / `targetLangMenuOpen` — whether the respective language dropdown is open
 - `card` — `{ word, correctedWord, translation, cefrLevel, x, top, bottom }` or `null`; exactly one of `top`/`bottom` is a number, the other is `null` (CSS `bottom` used when card flips above the word to avoid height-estimation gap); `translation` is `null` while the API call is in flight (shows "Translating…"); `cefrLevel` is `null` for multi-word selections; `correctedWord` is the typo-corrected spelling returned by Claude (or `null` if the word was correct) — used instead of `word` when saving to vocab
 - `loadingPos` — `{ x, y }` or `null`; position of the loading spinner while translation is in flight; decoupled from `card`'s `top`/`bottom` (always uses `anchorRect.bottom + 8` as `y`)
 - `wordStatus` — `{ inVocab, isActive }` or `null`; fetched in parallel with translation via `GET /api/vocabulary/check` for single-word clicks only; `null` for multi-word selections and while loading
@@ -158,15 +171,17 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 All colors live in `utils/theme.js` as a single `colors` object, **namespaced by feature**:
 
 ```js
-colors.app.*       // top-level shell
-colors.sidebar.*   // shared sidebar settings — both sidebars (background, langGroup pill)
-colors.header.*    // top header bar (background, title color, bottom shadow)
-colors.page.*      // per-page container
-colors.word.*      // word spans — includes linkColor for PDF link annotations
-colors.icon.*      // shared icon tints — default and hover
-colors.cefr.*      // CEFR level badge colors keyed by level (A1–C2)
-colors.card.*      // translation card
-colors.filePanel.* // file picker panel (upload button, URL input, recent file list items)
+colors.app.*          // top-level shell
+colors.sidebar.*      // shared sidebar settings — both sidebars (background, langGroup pill)
+colors.header.*       // top header bar (background, title color, bottom shadow)
+colors.page.*         // per-page container
+colors.word.*         // word spans — includes linkColor for PDF link annotations
+colors.icon.*         // shared icon tints — default and hover
+colors.cefr.*         // CEFR level badge colors keyed by level (A1–C2)
+colors.card.*         // translation card
+colors.filePanel.*    // file picker panel (upload button, URL input, recent file list items)
+colors.langSwitcher.* // language switcher — auto (bright green #22c55e), error (red #dc2626)
+colors.menu.*         // shared dropdown chrome — separator line color
 ```
 
 When adding a new UI element, add a new namespace rather than mixing tokens into an existing one. Import `colors` wherever styles are needed; never hardcode color values inline.
@@ -202,6 +217,7 @@ When adding a new UI element, add a new namespace rather than mixing tokens into
 
 **API routes** (all require a valid session except `/api/auth/*`):
 - `POST /api/auth/register` — create account; hashes password with bcrypt, creates default `UserSettings`
+- `GET /api/settings` — returns `{ sourceLang, targetLang }` from the user's `UserSettings`; falls back to `{ sourceLang: 'en', targetLang: 'ru' }` if no row exists
 - `POST /api/visit/ping` — updates `lastVisitedAt` for the current visit using `session.user.visitId`
 - `GET /api/vocabulary` — returns `{ words, sourceLangs, targetLangs }`; each word includes `cefrLevel` and `isActive` (joined against `ActiveWord`); ordered by `addedAt` desc
 - `POST /api/vocabulary` — upsert a word into the user's vocabulary (general vocab only)

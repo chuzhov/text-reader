@@ -55,11 +55,11 @@ export function extractContext(pages, pageNum, wordIndex, clickedWord) {
   return { before, after };
 }
 
-export async function translateWord(word, sourceLang, context = {}) {
+export async function translateWord(word, sourceLang, context = {}, targetLang = 'ru') {
   const res = await fetch('/api/translate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: word, sourceLang, targetLang: 'ru', context }),
+    body: JSON.stringify({ text: word, sourceLang, targetLang, context }),
   });
   const data = await res.json();
   return { translations: data.translations, correctedWord: data.correctedWord ?? null };

@@ -215,6 +215,9 @@ export default function PdfReader() {
 
   useEffect(() => { pagesRef.current = pages; }, [pages]);
 
+  const targetLangRef = useRef(targetLang);
+  useEffect(() => { targetLangRef.current = targetLang; }, [targetLang]);
+
   // Close user menu on outside click
   useEffect(() => {
     if (!userMenuOpen) return;
@@ -567,6 +570,7 @@ export default function PdfReader() {
   // Stable callback — PageView won't re-render when card opens/closes
   const onWordClick = useCallback(async (e, pageNum, wordIndex) => {
     e.stopPropagation();
+    if (sourceLang === targetLangRef.current) return;
     fetch('/api/visit/ping', { method: 'POST' });
 
     const selectedText = getSelectedText();
@@ -581,7 +585,7 @@ export default function PdfReader() {
       setCard(null);
       setWordStatus(null);
       setLoadingPos({ x: selRect.left, y: selRect.bottom + 8 });
-      const { translations } = await translateWord(selectedText, sourceLang);
+      const { translations } = await translateWord(selectedText, sourceLang, {}, targetLangRef.current);
       setLoadingPos(null);
       const status = translations?.[0] && !translations[0].includes(' ')
         ? await fetch(`/api/vocabulary/check?word=${encodeURIComponent(selectedText)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null)
@@ -608,7 +612,7 @@ export default function PdfReader() {
     setLoadingPos({ x: e.clientX, y: rect.bottom + 8 });
 
     const [{ translations, correctedWord }, status] = await Promise.all([
-      translateWord(word, sourceLang, context),
+      translateWord(word, sourceLang, context, targetLangRef.current),
       fetch(`/api/vocabulary/check?word=${encodeURIComponent(word)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null),
     ]);
     setLoadingPos(null);
@@ -842,9 +846,15 @@ export default function PdfReader() {
     >
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, marginTop: 8 }}>
         {pdfPath && (() => {
+          const sameLang = sourceLang === targetLang;
           const sourceBorderColor = detectedLang !== null
-            ? (sourceLang === detectedLang ? colors.langSwitcher.auto : colors.langSwitcher.mismatch)
+            ? (sourceLang === detectedLang ? colors.langSwitcher.auto : colors.langSwitcher.error)
             : colors.icon.default;
+          const sourceTooltip = detectedLang !== null
+            ? (sourceLang === detectedLang
+              ? "Language detected from the document"
+              : "Your selection doesn't match the document language")
+            : "No language in the document — using your default";
           return (
             <div style={{
               background: colors.sidebar.langGroup,
@@ -871,6 +881,7 @@ export default function PdfReader() {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  position: "relative",
                   padding: 0,
                   color: sourceLangHovered || sourceLangMenuOpen ? colors.icon.hover : sourceBorderColor,
                   fontSize: 11,
@@ -878,7 +889,38 @@ export default function PdfReader() {
                   letterSpacing: 0.5,
                 }}
               >
-                {sourceLang[0].toUpperCase() + sourceLang.slice(1)}
+                <span>{sourceLang[0].toUpperCase() + sourceLang.slice(1)}</span>
+                <span style={{ position: "absolute", bottom: 4, left: "50%", transform: "translateX(-50%)", width: 14, height: 2, visibility: detectedLang !== null && sourceLang === detectedLang ? "visible" : "hidden", background: sourceLangHovered || sourceLangMenuOpen ? colors.icon.hover : colors.langSwitcher.auto }} />
+                {sourceLangHovered && !sourceLangMenuOpen && (
+                  <div style={{
+                    position: "absolute",
+                    right: "calc(100% + 10px)",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "#1f2937",
+                    color: "#f9fafb",
+                    fontSize: 11,
+                    lineHeight: 1.4,
+                    padding: "5px 9px",
+                    borderRadius: 4,
+                    whiteSpace: "nowrap",
+                    pointerEvents: "none",
+                    zIndex: 300,
+                  }}>
+                    {sourceTooltip}
+                    <div style={{
+                      position: "absolute",
+                      right: -5,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      width: 0,
+                      height: 0,
+                      borderTop: "5px solid transparent",
+                      borderBottom: "5px solid transparent",
+                      borderLeft: "5px solid #1f2937",
+                    }} />
+                  </div>
+                )}
               </button>
               <button
                 ref={targetLangBtnRef}
@@ -889,20 +931,51 @@ export default function PdfReader() {
                   width: 30,
                   height: 30,
                   background: colors.sidebar.background,
-                  border: `1px solid ${targetLangMenuOpen ? colors.icon.hover : colors.icon.default}`,
+                  border: `1px solid ${targetLangMenuOpen ? colors.icon.hover : sameLang ? colors.langSwitcher.error : colors.icon.default}`,
                   borderRadius: 4,
                   cursor: "pointer",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
+                  position: "relative",
                   padding: 0,
-                  color: targetLangHovered || targetLangMenuOpen ? colors.icon.hover : colors.icon.default,
+                  color: targetLangHovered || targetLangMenuOpen ? colors.icon.hover : sameLang ? colors.langSwitcher.error : colors.icon.default,
                   fontSize: 11,
                   fontWeight: 600,
                   letterSpacing: 0.5,
                 }}
               >
                 {targetLang[0].toUpperCase() + targetLang.slice(1)}
+                {targetLangHovered && !targetLangMenuOpen && sameLang && (
+                  <div style={{
+                    position: "absolute",
+                    right: "calc(100% + 10px)",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "#1f2937",
+                    color: "#f9fafb",
+                    fontSize: 11,
+                    lineHeight: 1.4,
+                    padding: "5px 9px",
+                    borderRadius: 4,
+                    whiteSpace: "nowrap",
+                    pointerEvents: "none",
+                    zIndex: 300,
+                  }}>
+                    Source and target languages must be different
+                    <div style={{
+                      position: "absolute",
+                      right: -5,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      width: 0,
+                      height: 0,
+                      borderTop: "5px solid transparent",
+                      borderBottom: "5px solid transparent",
+                      borderLeft: "5px solid #1f2937",
+                    }} />
+                  </div>
+                )}
               </button>
               {(sourceLangMenuOpen || targetLangMenuOpen) && (() => {
                 const isSourceMenu = sourceLangMenuOpen;
@@ -1393,7 +1466,7 @@ export default function PdfReader() {
           setCard(null);
           setWordStatus(null);
           setLoadingPos({ x: selRect.left, y: selRect.bottom + 8 });
-          translateWord(selectedText, sourceLang).then(async ({ translations }) => {
+          translateWord(selectedText, sourceLang, {}, targetLang).then(async ({ translations }) => {
             setLoadingPos(null);
             const status = translations?.[0] && !translations[0].includes(' ')
               ? await fetch(`/api/vocabulary/check?word=${encodeURIComponent(selectedText)}&sourceLang=${encodeURIComponent(sourceLang)}`).then(r => r.ok ? r.json() : null)
