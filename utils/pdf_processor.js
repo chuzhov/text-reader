@@ -141,8 +141,8 @@ export async function extractPdf(pdfUrl) {
   const rawLang =
     meta.metadata?.getAll?.()?.['dc:language'] ??
     meta.info?.Language ??
-    'en';
-  const sourceLang = rawLang.split('-')[0].toLowerCase() || 'en';
+    null;
+  const sourceLang = rawLang ? rawLang.split('-')[0].toLowerCase() || null : null;
   const metaStr = v => v == null ? null : (Array.isArray(v) ? v[0] : v)?.toString().trim() || null;
   const title = metaStr(meta.metadata?.getAll?.()?.['dc:title'] ?? meta.info?.Title);
   const author = metaStr(meta.metadata?.getAll?.()?.['dc:creator'] ?? meta.info?.Author);

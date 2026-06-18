@@ -6,6 +6,7 @@ import { extractPdf } from "@/utils/pdf_processor";
 import { translateWord, getCefrFromAI, extractContext } from "@/utils/translation_api";
 import { getCefrLevel } from "@/utils/cefr";
 import { colors } from "@/utils/theme";
+import { SUPPORTED_LANGUAGES } from "@/utils/supportedLanguages";
 import ActiveDictPanel from "@/components/ActiveDictPanel";
 import GeneralDictPanel from "@/components/GeneralDictPanel";
 
@@ -128,11 +129,15 @@ export default function PdfReader() {
 
   const [pages, setPages] = useState([]);
   const [sourceLang, setSourceLang] = useState("en");
+  const [detectedLang, setDetectedLang] = useState(null);
   const [card, setCard] = useState(null);
   const [loadingPos, setLoadingPos] = useState(null);
   const [visiblePages, setVisiblePages] = useState(new Set());
   const [currentPage, setCurrentPage] = useState(null);
-  const [targetLang] = useState("ru");
+  const [targetLang, setTargetLang] = useState("ru");
+  const [userSettings, setUserSettings] = useState({ sourceLang: 'en', targetLang: 'ru' });
+  const [sourceLangMenuOpen, setSourceLangMenuOpen] = useState(false);
+  const [targetLangMenuOpen, setTargetLangMenuOpen] = useState(false);
 
   const deviceType = (() => {
     if (typeof window === 'undefined') return 'desktop';
@@ -189,6 +194,9 @@ export default function PdfReader() {
   const userMenuRef = useRef(null);
   const filePanelRef = useRef(null);
   const tocPanelRef = useRef(null);
+  const langMenuRef = useRef(null);
+  const sourceLangBtnRef = useRef(null);
+  const targetLangBtnRef = useRef(null);
   const fileInputRef = useRef(null);
   const observerRef = useRef(null);
   const activeSpanRef = useRef(null);
@@ -242,6 +250,30 @@ export default function PdfReader() {
     document.addEventListener('mousedown', handleOutside);
     return () => document.removeEventListener('mousedown', handleOutside);
   }, [showTocPanel]);
+
+  // Close lang menus on outside click or ESC
+  useEffect(() => {
+    if (!sourceLangMenuOpen && !targetLangMenuOpen) return;
+    const handleOutside = (e) => {
+      if (
+        langMenuRef.current && !langMenuRef.current.contains(e.target) &&
+        !sourceLangBtnRef.current?.contains(e.target) &&
+        !targetLangBtnRef.current?.contains(e.target)
+      ) {
+        setSourceLangMenuOpen(false);
+        setTargetLangMenuOpen(false);
+      }
+    };
+    const handleKey = (e) => {
+      if (e.key === 'Escape') { setSourceLangMenuOpen(false); setTargetLangMenuOpen(false); }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [sourceLangMenuOpen, targetLangMenuOpen]);
 
   // Resize ToC panel to fit the longest title
   useEffect(() => {
@@ -314,19 +346,22 @@ export default function PdfReader() {
       });
   }, [session]);
 
-  // Load most recent file on mount
+  // Load settings and most recent file on mount
   useEffect(() => {
-    fetch('/api/files')
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then(({ files }) => {
-        const list = files || [];
-        setUserFiles(list);
-        setFilesLoaded(true);
-        if (list.length > 0) {
-          loadFile(`/api/files/${list[0].id}/content`, list[0].id, list[0].scrollOffset);
-        }
-      })
-      .catch(() => setFilesLoaded(true));
+    Promise.all([
+      fetch('/api/settings').then(r => r.ok ? r.json() : null),
+      fetch('/api/files').then(r => r.ok ? r.json() : null),
+    ]).then(([settingsData, filesData]) => {
+      const settings = settingsData ?? { sourceLang: 'en', targetLang: 'ru' };
+      setUserSettings(settings);
+      setTargetLang(settings.targetLang);
+      const list = filesData?.files || [];
+      setUserFiles(list);
+      setFilesLoaded(true);
+      if (list.length > 0) {
+        loadFile(`/api/files/${list[0].id}/content`, list[0].id, list[0].scrollOffset, settings);
+      }
+    }).catch(() => setFilesLoaded(true));
   }, []);
 
   const computeCurrentPage = useCallback(() => {
@@ -400,7 +435,7 @@ export default function PdfReader() {
     if (el && observerRef.current) observerRef.current.observe(el);
   }, []);
 
-  async function loadFile(filePath, fileId, scrollOffset = 0) {
+  async function loadFile(filePath, fileId, scrollOffset = 0, settings = userSettings) {
     setPdfPath(filePath);
     setPages([]);
     setOutline([]);
@@ -409,8 +444,10 @@ export default function PdfReader() {
     pendingScrollRef.current = scrollOffset;
     currentFileIdRef.current = fileId;
     const { pages: p, sourceLang: sl, outline: ol, title: t, author: a } = await extractPdf(filePath);
+    const effectiveSourceLang = sl ?? settings.sourceLang;
     setPages(p);
-    setSourceLang(sl);
+    setDetectedLang(sl);
+    setSourceLang(effectiveSourceLang);
     setOutline(ol);
     setBookTitle(t);
     setBookAuthor(a);
@@ -418,7 +455,7 @@ export default function PdfReader() {
       fetch(`/api/files/${fileId}/open`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceLang: sl, targetLang }),
+        body: JSON.stringify({ sourceLang: effectiveSourceLang, targetLang: settings.targetLang }),
       });
     }
   }
@@ -804,60 +841,121 @@ export default function PdfReader() {
       }}
     >
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, marginTop: 8 }}>
-        {pdfPath && <div style={{
-          background: colors.sidebar.langGroup,
-          borderRadius: 6,
-          padding: 4,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 4,
-        }}>
-          <button
-            onMouseEnter={() => setSourceLangHovered(true)}
-            onMouseLeave={() => setSourceLangHovered(false)}
-            style={{
-              width: 30,
-              height: 30,
-              background: colors.sidebar.background,
-              border: `1px solid ${colors.icon.default}`,
-              borderRadius: 4,
-              cursor: "pointer",
+        {pdfPath && (() => {
+          const sourceBorderColor = detectedLang !== null
+            ? (sourceLang === detectedLang ? colors.langSwitcher.auto : colors.langSwitcher.mismatch)
+            : colors.icon.default;
+          return (
+            <div style={{
+              background: colors.sidebar.langGroup,
+              borderRadius: 6,
+              padding: 4,
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
-              justifyContent: "center",
-              padding: 0,
-              color: sourceLangHovered ? colors.icon.hover : colors.icon.default,
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: 0.5,
-            }}
-          >
-            {sourceLang[0].toUpperCase() + sourceLang.slice(1)}
-          </button>
-          <button
-            onMouseEnter={() => setTargetLangHovered(true)}
-            onMouseLeave={() => setTargetLangHovered(false)}
-            style={{
-              width: 30,
-              height: 30,
-              background: colors.sidebar.background,
-              border: `1px solid ${colors.icon.default}`,
-              borderRadius: 4,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 0,
-              color: targetLangHovered ? colors.icon.hover : colors.icon.default,
-              fontSize: 11,
-              fontWeight: 600,
-              letterSpacing: 0.5,
-            }}
-          >
-            {targetLang[0].toUpperCase() + targetLang.slice(1)}
-          </button>
-        </div>}
+              gap: 4,
+              position: "relative",
+            }}>
+              <button
+                ref={sourceLangBtnRef}
+                onMouseEnter={() => setSourceLangHovered(true)}
+                onMouseLeave={() => setSourceLangHovered(false)}
+                onClick={() => { setTargetLangMenuOpen(false); setSourceLangMenuOpen(v => !v); }}
+                style={{
+                  width: 30,
+                  height: 30,
+                  background: colors.sidebar.background,
+                  border: `1px solid ${sourceLangMenuOpen ? colors.icon.hover : sourceBorderColor}`,
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 0,
+                  color: sourceLangHovered || sourceLangMenuOpen ? colors.icon.hover : sourceBorderColor,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: 0.5,
+                }}
+              >
+                {sourceLang[0].toUpperCase() + sourceLang.slice(1)}
+              </button>
+              <button
+                ref={targetLangBtnRef}
+                onMouseEnter={() => setTargetLangHovered(true)}
+                onMouseLeave={() => setTargetLangHovered(false)}
+                onClick={() => { setSourceLangMenuOpen(false); setTargetLangMenuOpen(v => !v); }}
+                style={{
+                  width: 30,
+                  height: 30,
+                  background: colors.sidebar.background,
+                  border: `1px solid ${targetLangMenuOpen ? colors.icon.hover : colors.icon.default}`,
+                  borderRadius: 4,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 0,
+                  color: targetLangHovered || targetLangMenuOpen ? colors.icon.hover : colors.icon.default,
+                  fontSize: 11,
+                  fontWeight: 600,
+                  letterSpacing: 0.5,
+                }}
+              >
+                {targetLang[0].toUpperCase() + targetLang.slice(1)}
+              </button>
+              {(sourceLangMenuOpen || targetLangMenuOpen) && (() => {
+                const isSourceMenu = sourceLangMenuOpen;
+                const currentCode = isSourceMenu ? sourceLang : targetLang;
+                const separatorCode = isSourceMenu ? targetLang : sourceLang;
+                const separatorItem = SUPPORTED_LANGUAGES.find(l => l.code === separatorCode);
+                const mainItems = SUPPORTED_LANGUAGES.filter(l => l.code !== separatorCode);
+                const anchorBtn = isSourceMenu ? sourceLangBtnRef.current : targetLangBtnRef.current;
+                const topPos = anchorBtn ? anchorBtn.getBoundingClientRect().top : 80;
+                const renderItem = ({ code, label }) => (
+                  <button
+                    key={code}
+                    className={`menu-row${code === currentCode ? ' menu-row-active' : ''}`}
+                    onClick={() => {
+                      if (isSourceMenu) setSourceLang(code);
+                      else setTargetLang(code);
+                      setSourceLangMenuOpen(false);
+                      setTargetLangMenuOpen(false);
+                    }}
+                    style={{ width: "100%", padding: "6px 10px", textAlign: "left", fontSize: 13 }}
+                  >
+                    {label}
+                  </button>
+                );
+                return (
+                  <div
+                    ref={langMenuRef}
+                    style={{
+                      position: "fixed",
+                      right: 56,
+                      top: topPos,
+                      background: colors.sidebar.background,
+                      border: `1px solid ${colors.card.border}`,
+                      borderRadius: 6,
+                      boxShadow: colors.card.shadow,
+                      zIndex: 200,
+                      minWidth: 140,
+                      padding: "4px 4px 4px 0",
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    {mainItems.map(renderItem)}
+                    {separatorItem && <>
+                      <div style={{ height: 1, background: colors.menu.separator, margin: "2px 4px" }} />
+                      {renderItem(separatorItem)}
+                    </>}
+                  </div>
+                );
+              })()}
+            </div>
+          );
+        })()}
         {/* Active Dictionary toggle */}
         <button
           onMouseEnter={() => setActiveDictHovered(true)}

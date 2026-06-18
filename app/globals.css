@@ -27,6 +27,11 @@
 .toc-row-page { font-size: 11px; color: #9CA3AF; flex-shrink: 0; }
 .toc-row:hover .toc-row-page { color: #F97316; }
 
+/* Dropdown menu rows — lang switcher and any future inline dropdown */
+.menu-row { color: #374151; background: none; border: none; cursor: pointer; }
+.menu-row:hover { background: var(--menu-item-hover-bg); color: #F97316; }
+.menu-row-active { box-shadow: inset 3px 0 0 #F97316; }
+
 /* Panel close button (×) — shared across all menus */
 .panel-close { color: #aaa; border-radius: 4px; background: none; border: none; cursor: pointer; font-size: 18px; line-height: 1; padding: 0; }
 .panel-close:hover { color: #F97316; }

@@ -41,6 +41,13 @@ export const colors = {
     sectionLabel: "#9CA3AF",
     itemHoverBg: "#f5f5f5",
   },
+  langSwitcher: {
+    auto: "#16a34a",
+    mismatch: "#f59e0b",
+  },
+  menu: {
+    separator: "#e5e7eb",
+  },
   card: {
     background: "#ffffff",
     border: "#e0e0e0",
