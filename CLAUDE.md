@@ -21,6 +21,8 @@ No test framework is configured.
 
 **Dev server caveat:** Prisma 7's TypeScript-only ESM client has initialization issues in Next.js dev HMR context — after the first sign-in triggers the `authorize` callback, all NextAuth API routes may 500. Use `npm run build && npm start` for reliable auth testing.
 
+**`.next` pollution caveat:** Running `npm run dev` writes unhashed dev artifacts (`main-app.js`, `layout.css`) into `.next/`. A subsequent `npm run build` writes hashed production files alongside them, leaving the manifest in an inconsistent state — the HTML references the unhashed name, but only the hashed file exists on disk, causing all JS/CSS chunks to 404 at runtime. Always run `rm -rf .next && npm run build` (or PowerShell: `Remove-Item -Recurse -Force .next`) before starting the production server after any dev session.
+
 ## Architecture
 
 Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate floating cards. Users upload PDFs from their PC or by URL; the most recently opened file is auto-loaded on mount. No TypeScript, no CSS framework — all styling is inline.
@@ -99,6 +101,11 @@ Next.js 15 / React 19 app for reading PDFs with word-level click-to-translate fl
 - `generalDictWords` — `[{ id, word, translation, sourceLang, targetLang, cefrLevel, isActive }]` loaded from `GET /api/vocabulary` each time the panel opens; `isActive` is derived server-side by joining against `ActiveWord`
 - `generalDictSourceLangs` / `generalDictTargetLangs` — unique language code arrays derived from the fetched words
 - `generalDictHovered` — hover state for the General Dictionary sidebar button
+
+**Scroll persistence refs** (not React state — stored in refs to avoid re-renders):
+- `currentFileIdRef` — the `id` of the currently open `UserFile`; overwritten at the start of `loadFile`; the flush-on-switch logic reads this before overwriting to know which file is being left
+- `pendingScrollRef` — set to the target `scrollOffset` inside `loadFile` (before `setPages`); consumed by `useLayoutEffect` after `pages` is non-empty; `null` when no restore is pending. `useLayoutEffect` (not `useEffect`) is critical here: it fires synchronously after DOM commit before the browser paints, so `scrollTo` runs while the page-height layout is already finalized — `useEffect` fires after paint, by which point a mid-layout `scrollTo` can be clamped to a lower `scrollHeight`
+- `scrollSaveTimerRef` — handle for the 1-second debounced `PATCH /api/files/[id]/scroll` call; cleared and immediately flushed in `loadFile` when the user switches to a different file, so the last scroll position is never lost on a fast switch
 
 **General Dictionary panel** (`components/GeneralDictPanel.jsx`):
 - Fixed overlay at `top: 56, left: 56, right: 56`; same position as the Active Dictionary panel (the two panels are mutually exclusive — opening one closes the other)

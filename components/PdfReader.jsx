@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useLayoutEffect, useState, useRef, useCallback } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { extractPdf } from "@/utils/pdf_processor";
 import { translateWord, getCefrFromAI, extractContext } from "@/utils/translation_api";
@@ -381,8 +381,10 @@ export default function PdfReader() {
     });
   }, []);
 
-  // Restore scroll position after pages render
-  useEffect(() => {
+  // Restore scroll position after pages render — useLayoutEffect so the scroll
+  // is applied before the browser paints, preventing the container from ever
+  // showing the wrong position when page heights are already committed to DOM.
+  useLayoutEffect(() => {
     if (pages.length > 0 && pendingScrollRef.current !== null) {
       containerRef.current?.scrollTo({ top: pendingScrollRef.current });
       pendingScrollRef.current = null;
@@ -439,6 +441,18 @@ export default function PdfReader() {
   }, []);
 
   async function loadFile(filePath, fileId, scrollOffset = 0, settings = userSettings) {
+    // Flush pending scroll save for the file being left before switching context
+    if (currentFileIdRef.current && currentFileIdRef.current !== fileId) {
+      clearTimeout(scrollSaveTimerRef.current);
+      const oldFileId = currentFileIdRef.current;
+      const flushedScroll = Math.round(containerRef.current?.scrollTop ?? 0);
+      fetch(`/api/files/${oldFileId}/scroll`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scrollOffset: flushedScroll }),
+      });
+      setUserFiles(prev => prev.map(f => f.id === oldFileId ? { ...f, scrollOffset: flushedScroll } : f));
+    }
     setPdfPath(filePath);
     setPages([]);
     setOutline([]);
@@ -543,12 +557,14 @@ export default function PdfReader() {
     computeCurrentPage();
     clearTimeout(scrollSaveTimerRef.current);
     scrollSaveTimerRef.current = setTimeout(() => {
-      const scrollTop = containerRef.current?.scrollTop ?? 0;
+      if (!currentFileIdRef.current) return;
+      const scrollTop = Math.round(containerRef.current?.scrollTop ?? 0);
       fetch(`/api/files/${currentFileIdRef.current}/scroll`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scrollOffset: Math.round(scrollTop) }),
+        body: JSON.stringify({ scrollOffset: scrollTop }),
       });
+      setUserFiles(prev => prev.map(f => f.id === currentFileIdRef.current ? { ...f, scrollOffset: scrollTop } : f));
     }, 1000);
   }, []);
 
