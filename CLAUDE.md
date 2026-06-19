@@ -216,7 +216,7 @@ When adding a new UI element, add a new namespace rather than mixing tokens into
 - `UserFile` — uploaded PDF metadata; `path` stores only the filename (not a URL); `scrollOffset` (int px) is restored when the file is reopened; `lastOpenedAt` drives the "most recent" sort order
 
 **API routes** (all require a valid session except `/api/auth/*`):
-- `POST /api/auth/register` — create account; hashes password with bcrypt, creates default `UserSettings`
+- `POST /api/auth/register` — create account; body: `{ email, password, sourceLang?, targetLang? }`; hashes password with bcrypt; validates both lang codes against the supported list (falls back to `en`/`ru`); rejects same-language pairs with 400; creates `UserSettings` with the chosen languages
 - `GET /api/settings` — returns `{ sourceLang, targetLang }` from the user's `UserSettings`; falls back to `{ sourceLang: 'en', targetLang: 'ru' }` if no row exists
 - `POST /api/visit/ping` — updates `lastVisitedAt` for the current visit using `session.user.visitId`
 - `GET /api/vocabulary` — returns `{ words, sourceLangs, targetLangs }`; each word includes `cefrLevel` and `isActive` (joined against `ActiveWord`); ordered by `addedAt` desc

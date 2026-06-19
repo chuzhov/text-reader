@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { SUPPORTED_LANGUAGES } from '@/utils/supportedLanguages';
 
 const ACCENT = '#F97316';
 
@@ -11,6 +12,8 @@ export default function AuthPage() {
   const [tab, setTab] = useState('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [sourceLang, setSourceLang] = useState('en');
+  const [targetLang, setTargetLang] = useState('ru');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -39,11 +42,15 @@ export default function AuthPage() {
       setError('Password must be at least 8 characters');
       return;
     }
+    if (sourceLang === targetLang) {
+      setError('Document language and translation language must be different');
+      return;
+    }
     setLoading(true);
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      body: JSON.stringify({ email, password, sourceLang, targetLang }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -71,6 +78,19 @@ export default function AuthPage() {
     boxSizing: 'border-box',
     color: '#111',
     fontFamily: 'sans-serif',
+  };
+
+  const selectStyle = {
+    flex: 1,
+    padding: '9px 8px',
+    border: '1px solid #d1d5db',
+    borderRadius: 6,
+    fontSize: 13,
+    outline: 'none',
+    color: '#111',
+    background: '#fff',
+    fontFamily: 'sans-serif',
+    cursor: 'pointer',
   };
 
   const labelStyle = {
@@ -138,7 +158,7 @@ export default function AuthPage() {
             />
           </div>
 
-          <div style={{ marginBottom: 24 }}>
+          <div style={{ marginBottom: tab === 'signup' ? 20 : 24 }}>
             <label style={labelStyle}>Password</label>
             <input
               type="password"
@@ -149,6 +169,49 @@ export default function AuthPage() {
               style={inputStyle}
             />
           </div>
+
+          {tab === 'signup' && (
+            <div style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ ...labelStyle, marginBottom: 4 }}>I mostly read in</label>
+                  <select
+                    value={sourceLang}
+                    onChange={e => setSourceLang(e.target.value)}
+                    style={{
+                      ...selectStyle,
+                      width: '100%',
+                      borderColor: sourceLang === targetLang ? '#ef4444' : '#d1d5db',
+                    }}
+                  >
+                    {SUPPORTED_LANGUAGES.map(l => (
+                      <option key={l.code} value={l.code}>{l.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <span style={{ color: '#9ca3af', flexShrink: 0, paddingBottom: 9 }}>{'>'}</span>
+                <div style={{ flex: 1 }}>
+                  <label style={{ ...labelStyle, marginBottom: 4 }}>and translate into</label>
+                  <select
+                    value={targetLang}
+                    onChange={e => setTargetLang(e.target.value)}
+                    style={{
+                      ...selectStyle,
+                      width: '100%',
+                      borderColor: sourceLang === targetLang ? '#ef4444' : '#d1d5db',
+                    }}
+                  >
+                    {SUPPORTED_LANGUAGES.map(l => (
+                      <option key={l.code} value={l.code}>{l.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <p style={{ margin: '8px 0 0', fontSize: 11, color: '#9ca3af', lineHeight: 1.5 }}>
+                You can change these anytime while reading or in your profile settings.
+              </p>
+            </div>
+          )}
 
           {error && (
             <div style={{ color: '#ef4444', fontSize: 13, marginBottom: 16, textAlign: 'center' }}>
